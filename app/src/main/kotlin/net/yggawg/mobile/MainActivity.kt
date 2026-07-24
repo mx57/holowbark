@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -87,6 +88,7 @@ private object Routes {
     const val PEERS     = "peers/{countryKey}"
     const val NETWORK   = "network"
     const val LOGS      = "logs"
+    const val WARP      = "warp"
     fun peers(key: String) = "peers/${java.net.URLEncoder.encode(key, "UTF-8")}"
 }
 
@@ -133,6 +135,12 @@ fun AppNavHost(
                     icon     = { Icon(Icons.Default.Terminal, "Logs") },
                     label    = { Text("Logs") },
                 )
+                NavigationBarItem(
+                    selected = currentRoute == Routes.WARP,
+                    onClick  = { navController.navigateSingleTop(Routes.WARP) },
+                    icon     = { Icon(Icons.Default.VpnKey, "WARP") },
+                    label    = { Text("WARP") },
+                )
             }
         }
     ) { padding ->
@@ -148,6 +156,7 @@ fun AppNavHost(
                     onNavigateImport    = { navController.navigate(Routes.IMPORT) },
                     onNavigateCountries = { navController.navigate(Routes.COUNTRIES) },
                     onRestartAwg        = vm::restartAwg,
+                    onWarpClick         = { navController.navigate(Routes.WARP) },
                 )
             }
             composable(Routes.IMPORT) {
@@ -166,6 +175,16 @@ fun AppNavHost(
             }
             composable(Routes.LOGS) {
                 LogsScreen()
+            }
+            composable(Routes.WARP) {
+                WarpScreen(
+                    onConfigGenerated = { conf ->
+                        vm.saveWarpConfig(conf)
+                        navController.navigate(Routes.IMPORT) {
+                            popUpTo(Routes.HOME)
+                        }
+                    },
+                )
             }
             composable(Routes.PEERS) { backStack ->
                 val rawKey = backStack.arguments?.getString("countryKey") ?: ""

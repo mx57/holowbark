@@ -139,14 +139,14 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
 
     fun disconnect() {
         val app = getApplication<Application>()
-        app.startService(Intent(app, YggVpnService::class.java).apply {
+        ContextCompat.startForegroundService(app, Intent(app, YggVpnService::class.java).apply {
             action = YggVpnService.ACTION_STOP
         })
     }
 
     fun restartAwg() {
         val app = getApplication<Application>()
-        app.startService(Intent(app, YggVpnService::class.java).apply {
+        ContextCompat.startForegroundService(app, Intent(app, YggVpnService::class.java).apply {
             action = YggVpnService.ACTION_RESTART_AWG
         })
     }
@@ -198,6 +198,16 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearError() { _errorMessage.value = null }
+
+    /** Save a raw WARP config text (from WARP generator) and parse it. */
+    fun saveWarpConfig(confText: String) {
+        val config = runCatching { parseAwgConf(confText) }.getOrNull()
+        if (config != null) {
+            saveAwgConfig(config, confText)
+        } else {
+            _errorMessage.value = "Failed to parse generated WARP config"
+        }
+    }
 
     fun toggleYggDns() {
         val enabled = !_yggDnsEnabled.value

@@ -1,0 +1,122 @@
+# Holowbark APK Build Workflow
+#
+# Собирает debug APK при пуше в main/master и при создании PR.
+# Требует: Go, Android SDK, NDK, gomobile.
+
+name: Build Holowbark APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # ручной запуск
+
+env:
+  ANDROID_HOME: /home/runner/android-sdk
+  ANDROID_NDK_HOME: /home/runner/android-sdk/ndk/27.2.12479018
+  JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@8df1039502a15bceb9433410a1a15000400f5c4e  # v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Go
+        uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34  # v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache Android SDK
+        id: cache-sdk
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf  # v4
+        with:
+          path: |
+            /home/runner/android-sdk
+          key: android-sdk-35-${{ runner.os }}
+
+      - name: Setup Android SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /home/runner/android-sdk/cmdline-tools
+          curl -sL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
+            -o /tmp/cmdline-tools.zip
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extracted
+          mv /tmp/cmdline-tools-extracted/cmdline-tools /home/runner/android-sdk/cmdline-tools/latest
+          rm /tmp/cmdline-tools.zip
+          yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/android-sdk \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;27.2.12479018"
+
+      - name: Cache Go dependencies
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf  # v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/go/bin
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          ANDROID_NDK_HOME=/home/runner/android-sdk/ndk/27.2.12479018 \
+            ~/go/bin/gomobile init
+
+      - name: Clone Go dependencies
+        run: |
+          mkdir -p ~/proj/code/go_libs
+          git clone --depth=1 https://github.com/yggdrasil-network/yggdrasil-go.git \
+            ~/proj/code/go_libs/yggdrasil-go
+          git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git \
+            ~/proj/code/go_libs/amneziawg-go
+          cd ~/proj/code/go_libs/yggdrasil-go && \
+            go get golang.org/x/mobile/bind && \
+            go get github.com/amnezia-vpn/amneziawg-go@latest && \
+            go mod tidy
+          mkdir -p ~/proj/code/go_libs/yggdrasil-go/contrib/awgmobile
+          cp ${{ github.workspace }}/contrib/awgmobile/awgmobile.go \
+            ~/proj/code/go_libs/yggdrasil-go/contrib/awgmobile/awgmobile.go
+
+      - name: Build holowbark.aar (Go libraries)
+        run: |
+          cd ~/proj/code/go_libs/yggdrasil-go
+          PATH=~/go/bin:$PATH ~/go/bin/gomobile bind \
+            -target android \
+            -androidapi 26 \
+            -tags mobile \
+            -o ${{ github.workspace }}/app/libs/holowbark.aar \
+            -ldflags="-s -w -checklinkname=0 -extldflags=-Wl,-z,max-page-size=16384" \
+            ./contrib/mobile \
+            ./src/config \
+            ./contrib/awgmobile
+
+      - name: Build debug APK
+        run: |
+          cd ${{ github.workspace }}
+          ANDROID_HOME=/home/runner/android-sdk \
+          ANDROID_NDK_HOME=/home/runner/android-sdk/ndk/27.2.12479018 \
+          JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@4bfc4e0b81330fc10ea96b15d88e5252f08bea7a  # v4
+        with:
+          name: holowbark-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Get APK size
+        if: success()
+        run: |
+          ls -lh ${{ github.workspace }}/app/build/outputs/apk/debug/app-debug.apk

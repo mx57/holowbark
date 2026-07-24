@@ -20,6 +20,7 @@ fun HomeScreen(
     onNavigateImport: () -> Unit,
     onNavigateCountries: () -> Unit,
     onRestartAwg: () -> Unit = {},
+    onWarpClick: () -> Unit = {},
 ) {
     val tunnelStatus  by vm.tunnelStatus.collectAsState()
     val awgConfig     by vm.awgConfig.collectAsState()
@@ -59,6 +60,7 @@ fun HomeScreen(
                 protocolLabel = protocolLabel,
                 endpoint = awgConfig?.endpoint,
                 onImportClick = onNavigateImport,
+                onWarpClick = { navController?.navigate(Routes.WARP) },
             )
 
             PeersCard(
@@ -205,7 +207,7 @@ private fun LayerRow(label: String, state: LayerState, detail: String?) {
 }
 
 @Composable
-private fun AwgConfigCard(protocolLabel: String, endpoint: String?, onImportClick: () -> Unit) {
+private fun AwgConfigCard(protocolLabel: String, endpoint: String?, onImportClick: () -> Unit, onWarpClick: () -> Unit = {}) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("$protocolLabel Config", style = MaterialTheme.typography.titleSmall)
@@ -215,10 +217,19 @@ private fun AwgConfigCard(protocolLabel: String, endpoint: String?, onImportClic
                 Text("No config imported", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.outline)
             }
-            OutlinedButton(onClick = onImportClick, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (endpoint != null) "Replace .conf" else "Import .conf")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onImportClick, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (endpoint != null) "Replace .conf" else "Import .conf")
+                }
+                if (endpoint == null) {
+                    OutlinedButton(onClick = onWarpClick, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("WARP")
+                    }
+                }
             }
         }
     }
