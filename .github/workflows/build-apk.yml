@@ -68,12 +68,19 @@ jobs:
           mkdir -p ~/proj/code/go_libs
           git clone --depth=1 https://github.com/yggdrasil-network/yggdrasil-go.git ~/proj/code/go_libs/yggdrasil-go
           git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git ~/proj/code/go_libs/amneziawg-go
+
+      - name: Add go mobile tool dependency in yggdrasil-go
+        run: |
           cd ~/proj/code/go_libs/yggdrasil-go
+          go get -tool golang.org/x/mobile/cmd/gobind
           go get golang.org/x/mobile/bind
           go get github.com/amnezia-vpn/amneziawg-go@latest
           go mod tidy
-          mkdir -p contrib/awgmobile
-          cp ${{ github.workspace }}/contrib/awgmobile/awgmobile.go contrib/awgmobile/awgmobile.go
+
+      - name: Copy AWG wrapper
+        run: |
+          mkdir -p ~/proj/code/go_libs/yggdrasil-go/contrib/awgmobile
+          cp ${{ github.workspace }}/contrib/awgmobile/awgmobile.go ~/proj/code/go_libs/yggdrasil-go/contrib/awgmobile/awgmobile.go
 
       - name: Build holowbark.aar
         run: |
