@@ -82,7 +82,7 @@ jobs:
       - name: Add go mobile dependencies
         run: |
           cd ~/proj/code/go_libs/yggdrasil-go
-          go get golang.org/x/mobile/cmd/gobind
+          go get -tool golang.org/x/mobile/cmd/gobind
           go get golang.org/x/mobile/bind
           go get github.com/amnezia-vpn/amneziawg-go@latest
           go mod tidy
