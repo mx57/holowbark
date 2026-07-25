@@ -95,11 +95,14 @@ jobs:
       - name: Build holowbark.aar
         run: |
           cd ~/proj/code/go_libs/yggdrasil-go
+          mkdir -p ${{ github.workspace }}/app/libs
           PATH=~/go/bin:$PATH ~/go/bin/gomobile bind \
             -target android -androidapi 26 -tags mobile \
             -o ${{ github.workspace }}/app/libs/holowbark.aar \
             -ldflags="-s -w -checklinkname=0 -extldflags=-Wl,-z,max-page-size=16384" \
-            ./contrib/mobile ./src/config ./contrib/awgmobile
+            ./contrib/mobile ./src/config ./contrib/awgmobile 2>&1
+          echo "=== ls app/libs ==="
+          ls -la ${{ github.workspace }}/app/libs/ || true
 
       - name: Build debug APK
         run: |
