@@ -25,11 +25,13 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          check-latest: false
 
-      - name: Setup Go 1.22
+      - name: Setup Go 1.23
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'
+          check-latest: false
 
       - name: Cache Android SDK
         uses: actions/cache@v4
@@ -66,13 +68,20 @@ jobs:
       - name: Clone Go dependencies
         run: |
           mkdir -p ~/proj/code/go_libs
-          git clone --depth=1 https://github.com/yggdrasil-network/yggdrasil-go.git ~/proj/code/go_libs/yggdrasil-go
-          git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git ~/proj/code/go_libs/amneziawg-go
+          if [ ! -d ~/proj/code/go_libs/yggdrasil-go ]; then \
+            git clone --depth=1 https://github.com/yggdrasil-network/yggdrasil-go.git ~/proj/code/go_libs/yggdrasil-go; \
+          else \
+            echo "yggdrasil-go already cloned"; \
+          fi
+          if [ ! -d ~/proj/code/go_libs/amneziawg-go ]; then \
+            git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git ~/proj/code/go_libs/amneziawg-go; \
+          else \
+            echo "amneziawg-go already cloned"; \
+          fi
 
-      - name: Add go mobile tool dependency in yggdrasil-go
+      - name: Add go mobile tool dependency
         run: |
           cd ~/proj/code/go_libs/yggdrasil-go
-          go get -tool golang.org/x/mobile/cmd/gobind
           go get golang.org/x/mobile/bind
           go get github.com/amnezia-vpn/amneziawg-go@latest
           go mod tidy

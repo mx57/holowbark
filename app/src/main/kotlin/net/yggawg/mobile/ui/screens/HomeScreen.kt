@@ -60,7 +60,7 @@ fun HomeScreen(
                 protocolLabel = protocolLabel,
                 endpoint = awgConfig?.endpoint,
                 onImportClick = onNavigateImport,
-                onWarpClick = { navController?.navigate(Routes.WARP) },
+                onWarpClick = onWarpClick,
             )
 
             PeersCard(

@@ -11,3 +11,4 @@ local.properties
 *.jks
 entities.json
 .claude/settings.local.json
+.git-credentials

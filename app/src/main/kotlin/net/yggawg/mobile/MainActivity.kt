@@ -84,11 +84,11 @@ class MainActivity : ComponentActivity() {
 private object Routes {
     const val HOME      = "home"
     const val IMPORT    = "import"
+    const val WARP      = "warp"
     const val COUNTRIES = "countries"
     const val PEERS     = "peers/{countryKey}"
     const val NETWORK   = "network"
     const val LOGS      = "logs"
-    const val WARP      = "warp"
     fun peers(key: String) = "peers/${java.net.URLEncoder.encode(key, "UTF-8")}"
 }
 
@@ -177,13 +177,8 @@ fun AppNavHost(
                 LogsScreen()
             }
             composable(Routes.WARP) {
-                WarpScreen(
-                    onConfigGenerated = { conf ->
-                        vm.saveWarpConfig(conf)
-                        navController.navigate(Routes.IMPORT) {
-                            popUpTo(Routes.HOME)
-                        }
-                    },
+                WarpGenerateScreen(
+                    onDone = { navController.popBackStack() },
                 )
             }
             composable(Routes.PEERS) { backStack ->
