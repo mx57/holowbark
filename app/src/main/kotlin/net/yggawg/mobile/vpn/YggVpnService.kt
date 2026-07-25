@@ -178,12 +178,19 @@ class YggVpnService : VpnService() {
         }
         // Use the real Yggdrasil address so replies to user-initiated connections
         // are routed correctly through the overlay back to this node.
-        builder.addAddress(yggAddress, 7)
+        // Try /7 first (covers 200::/7 overlay range), fall back to /128 host address.
+        runCatching { builder.addAddress(yggAddress, 7) }
+            .onFailure {
+                AppLogger.w(TAG, "addAddress $yggAddress/7 failed: $it — trying /128")
+                runCatching { builder.addAddress(yggAddress, 128) }
+                    .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
+            }
         // Tricks Android's DNS resolver into issuing AAAA queries even when there is no
         // global IPv6 on the physical network. Without this single /128 host route the
         // resolver skips AAAA lookups entirely, making Yggdrasil service names unresolvable.
         // See android.googlesource.com/.../bionic/libc/dns/net/getaddrinfo.c#1935
-        builder.addRoute("2000::", 128)
+        runCatching { builder.addRoute("2000::", 128) }
+            .onFailure { AppLogger.w(TAG, "addRoute 2000::/128 failed: $it") }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // API 33+: catch-all routes + excludeRoute per IP (no route-count explosion).
