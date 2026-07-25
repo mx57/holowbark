@@ -62,7 +62,9 @@ jobs:
         run: gomobile init
 
       - name: Build AAR (Yggdrasil + AmneziaWG)
-        run: make aar
+        run: |
+          mkdir -p app/libs
+          make aar
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
