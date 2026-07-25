@@ -102,6 +102,7 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           ANDROID_HOME=/home/runner/android-sdk \
+          ANDROID_SDK_ROOT=/home/runner/android-sdk \
           ANDROID_NDK_HOME=/home/runner/android-sdk/ndk/27.2.12479018 \
           ./gradlew assembleDebug --no-daemon
 
