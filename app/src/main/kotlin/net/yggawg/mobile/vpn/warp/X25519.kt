@@ -161,8 +161,8 @@ object X25519 {
         exp[31] = 0x7F
 
         var started = false
-        for byteIdx in 31 downTo 0 {
-            for bitIdx in 7 downTo 0 {
+        for (byteIdx in 31 downTo 0) {
+            for (bitIdx in 7 downTo 0) {
                 val bit = (exp[byteIdx].toInt() ushr bitIdx) and 1
                 if (started || bit == 1) {
                     if (started) t = sq(t)
