@@ -16,6 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y make
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -38,6 +41,7 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> $GITHUB_ENV
           echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))" >> $GITHUB_ENV
+          echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Install gomobile
         run: |
@@ -47,14 +51,12 @@ jobs:
 
       - name: Clone Go dependencies
         run: make clone-deps
-        env:
-          GOMOBILE: $HOME/go/bin/gomobile
+
+      - name: Init gomobile
+        run: gomobile init
 
       - name: Build AAR (Yggdrasil + AmneziaWG)
         run: make aar
-        env:
-          GOMOBILE: $HOME/go/bin/gomobile
-          PATH: $HOME/go/bin:$PATH
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
