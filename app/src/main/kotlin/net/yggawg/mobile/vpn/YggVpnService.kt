@@ -166,25 +166,37 @@ class YggVpnService : VpnService() {
             .setSession("Holowbark")
             .setMtu(1500)
 
-        // Add WG client address from config (e.g. "10.9.0.2/32")
-        awgConfig?.address?.let { addr ->
-            val slash = addr.indexOf('/')
-            val ip     = if (slash >= 0) addr.substring(0, slash) else addr
-            val prefix = if (slash >= 0) addr.substring(slash + 1).toIntOrNull() ?: 32 else 32
-            runCatching { builder.addAddress(ip, prefix) }
-                .onFailure { AppLogger.w(TAG, "addAddress $addr: $it") }
-        } ?: run {
+        // Add WG client addresses from config (e.g. "10.9.0.2/32" or "172.16.0.2/32, fd01::2/128")
+        val wgAddresses = mutableListOf<String>()
+        awgConfig?.address?.let { raw ->
+            // Split comma-separated addresses: "10.9.0.2/32, fd01::2/128" → ["10.9.0.2/32", "fd01::2/128"]
+            val parts = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            for (part in parts) {
+                val slash = part.indexOf('/')
+                val ip     = if (slash >= 0) part.substring(0, slash) else part
+                val prefix = if (slash >= 0) part.substring(slash + 1).toIntOrNull() ?: 32 else 32
+                runCatching { builder.addAddress(ip, prefix) }
+                    .onFailure { AppLogger.w(TAG, "addAddress $ip/$prefix: $it") }
+                    .onSuccess { wgAddresses.add(ip) }
+            }
+        }
+        if (wgAddresses.isEmpty()) {
             builder.addAddress("10.100.0.1", 32)
         }
         // Use the real Yggdrasil address so replies to user-initiated connections
         // are routed correctly through the overlay back to this node.
         // Try /7 first (covers 200::/7 overlay range), fall back to /128 host address.
-        runCatching { builder.addAddress(yggAddress, 7) }
-            .onFailure {
-                AppLogger.w(TAG, "addAddress $yggAddress/7 failed: $it — trying /128")
-                runCatching { builder.addAddress(yggAddress, 128) }
-                    .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
-            }
+        // Skip if yggAddress is empty or not a valid IPv6 address.
+        if (yggAddress.isNotEmpty() && yggAddress != "200::") {
+            runCatching { builder.addAddress(yggAddress, 7) }
+                .onFailure {
+                    AppLogger.w(TAG, "addAddress $yggAddress/7 failed: $it — trying /128")
+                    runCatching { builder.addAddress(yggAddress, 128) }
+                        .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
+                }
+        } else {
+            AppLogger.w(TAG, "No valid Yggdrasil address — skipping IPv6 TUN address")
+        }
         // Tricks Android's DNS resolver into issuing AAAA queries even when there is no
         // global IPv6 on the physical network. Without this single /128 host route the
         // resolver skips AAAA lookups entirely, making Yggdrasil service names unresolvable.
