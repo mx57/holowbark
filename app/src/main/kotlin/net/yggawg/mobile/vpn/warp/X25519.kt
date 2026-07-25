@@ -59,7 +59,7 @@ object X25519 {
             val cc = sq(add(da, cb))
             x3 = sq(add(z3, mulW(cb, 121665)))
             z3 = mul(x1, dd)
-            x2 = mulW(sq(add(x2, mulW(z2, 121665))), e)
+            x2 = mul(sq(add(x2, mulW(z2, 121665))), e)
             z2 = mul(aa, e)
         }
         cswap(swap, x2, x3); cswap(swap, z2, z3)
