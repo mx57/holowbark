@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -22,6 +21,7 @@ import net.yggawg.mobile.config.AwgConfigParseException
 import net.yggawg.mobile.config.parseAwgConf
 import net.yggawg.mobile.config.toConfString
 import net.yggawg.mobile.ui.VpnStateViewModel
+
 private val SENSITIVE_KEYS = setOf("PrivateKey", "PresharedKey")
 
 private fun redactConfLine(line: String): String {
@@ -36,6 +36,7 @@ private fun redactConfLine(line: String): String {
 fun ImportScreen(
     vm: VpnStateViewModel,
     onImported: () -> Unit,
+    onNavigateWarp: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var errorText by remember { mutableStateOf<String?>(null) }
@@ -83,6 +84,7 @@ fun ImportScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Import .conf button
             Button(
                 onClick = { picker.launch(arrayOf("*/*")) },
                 modifier = Modifier.fillMaxWidth(),
@@ -92,39 +94,24 @@ fun ImportScreen(
                 Text(if (awgConfig != null) "Replace .conf file" else "Open .conf file")
             }
 
+            // Generate WARP button
+            OutlinedButton(
+                onClick = onNavigateWarp,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Generate WARP Config")
+            }
+
             if (awgConfig == null) {
                 Text(
-                    "No config loaded. Import an AmneziaWG or WireGuard .conf file.\n" +
-                    "AmneziaWG obfuscation params (Jc, Jmin, Jmax, S1, S2, H1–H4) are supported.\n" +
-                    "Or generate a WARP config from the WARP tab.",
+                    "No config loaded. Import an AmneziaWG or WireGuard .conf file,\n" +
+                    "or generate a Cloudflare WARP config with one tap.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.outline,
                 )
             } else {
-                // Show WARP badge if config is from Cloudflare
-                val isWarp = rawConf?.contains("engage.cloudflareclient.com") == true ||
-                    awgConfig!!.endpoint.contains("cloudflare")
-                if (isWarp) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(Icons.Default.VpnKey, null, tint = MaterialTheme.colorScheme.tertiary)
-                            Text(
-                                "Cloudflare WARP config ready to use",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            )
-                        }
-                    }
-                }
                 // Use raw imported text so no fields are lost in round-trip
                 val displayText = rawConf ?: awgConfig!!.toConfString()
                 val lines = remember(displayText) {

@@ -1,118 +1,75 @@
-name: Build Holowbark APK
+name: Build APK
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          check-latest: false
 
-      - name: Setup Go 1.24
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-          check-latest: false
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Cache Android SDK
-        uses: actions/cache@v4
-        id: cache-sdk
-        with:
-          path: /home/runner/android-sdk
-          key: android-sdk-35-${{ runner.os }}
+      - name: Install NDK
+        run: sdkmanager "ndk;27.2.12479018"
 
-      - name: Setup Android SDK
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
+      - name: Set environment
         run: |
-          mkdir -p /home/runner/android-sdk/cmdline-tools
-          curl -sL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip
-          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extracted
-          mv /tmp/cmdline-tools-extracted/cmdline-tools /home/runner/android-sdk/cmdline-tools/latest
-          rm /tmp/cmdline-tools.zip
-          yes | /home/runner/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/home/runner/android-sdk \
-            "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;27.2.12479018"
-
-      - name: Cache Go dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/go/bin
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> $GITHUB_ENV
+          echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))" >> $GITHUB_ENV
 
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          ANDROID_NDK_HOME=/home/runner/android-sdk/ndk/27.2.12479018 ~/go/bin/gomobile init
+          export PATH=$HOME/go/bin:$PATH
 
       - name: Clone Go dependencies
-        run: |
-          mkdir -p ~/proj/code/go_libs
-          if [ ! -d ~/proj/code/go_libs/yggdrasil-go ]; then \
-            git clone --depth=1 https://github.com/yggdrasil-network/yggdrasil-go.git ~/proj/code/go_libs/yggdrasil-go; \
-          else \
-            echo "yggdrasil-go already cloned"; \
-          fi
-          if [ ! -d ~/proj/code/go_libs/amneziawg-go ]; then \
-            git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git ~/proj/code/go_libs/amneziawg-go; \
-          else \
-            echo "amneziawg-go already cloned"; \
-          fi
+        run: make clone-deps
+        env:
+          GOMOBILE: $HOME/go/bin/gomobile
 
-      - name: Add go mobile dependencies
-        run: |
-          cd ~/proj/code/go_libs/yggdrasil-go
-          go get -tool golang.org/x/mobile/cmd/gobind
-          go get golang.org/x/mobile/bind
-          go get github.com/amnezia-vpn/amneziawg-go@latest
-          go mod tidy
-
-      - name: Copy AWG wrapper
-        run: |
-          mkdir -p ~/proj/code/go_libs/yggdrasil-go/contrib/awgmobile
-          cp ${{ github.workspace }}/contrib/awgmobile/awgmobile.go ~/proj/code/go_libs/yggdrasil-go/contrib/awgmobile/awgmobile.go
-
-      - name: Build holowbark.aar
-        run: |
-          cd ~/proj/code/go_libs/yggdrasil-go
-          mkdir -p ${{ github.workspace }}/app/libs
-          PATH=~/go/bin:$PATH ~/go/bin/gomobile bind \
-            -target android -androidapi 26 -tags mobile \
-            -o ${{ github.workspace }}/app/libs/holowbark.aar \
-            -ldflags="-s -w -checklinkname=0 -extldflags=-Wl,-z,max-page-size=16384" \
-            ./contrib/mobile ./src/config ./contrib/awgmobile 2>&1
-          echo "=== ls app/libs ==="
-          ls -la ${{ github.workspace }}/app/libs/ || true
+      - name: Build AAR (Yggdrasil + AmneziaWG)
+        run: make aar
+        env:
+          GOMOBILE: $HOME/go/bin/gomobile
+          PATH: $HOME/go/bin:$PATH
 
       - name: Build debug APK
-        run: |
-          cd ${{ github.workspace }}
-          ANDROID_HOME=/home/runner/android-sdk \
-          ANDROID_SDK_ROOT=/home/runner/android-sdk \
-          ANDROID_NDK_HOME=/home/runner/android-sdk/ndk/27.2.12479018 \
-          ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Build release APK
+        run: ./gradlew assembleRelease
+
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: holowbark-debug-apk
+          name: holowbark-debug
           path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
 
-      - name: APK info
-        if: success()
-        run: ls -lh ${{ github.workspace }}/app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: holowbark-release
+          path: app/build/outputs/apk/release/app-release-unsigned.apk

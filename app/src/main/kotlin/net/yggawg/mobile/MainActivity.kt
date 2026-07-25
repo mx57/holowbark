@@ -73,7 +73,6 @@ class MainActivity : ComponentActivity() {
         if (intent != null) {
             vpnPermissionLauncher.launch(intent)
         } else {
-            // Permission already granted
             vm.connect()
         }
     }
@@ -124,6 +123,12 @@ fun AppNavHost(
                     label    = { Text("Network") },
                 )
                 NavigationBarItem(
+                    selected = currentRoute == Routes.WARP,
+                    onClick  = { navController.navigateSingleTop(Routes.WARP) },
+                    icon     = { Icon(Icons.Default.VpnKey, "WARP") },
+                    label    = { Text("WARP") },
+                )
+                NavigationBarItem(
                     selected = currentRoute == Routes.IMPORT,
                     onClick  = { navController.navigateSingleTop(Routes.IMPORT) },
                     icon     = { Icon(Icons.Default.Settings, "$confTabLabel Config") },
@@ -134,12 +139,6 @@ fun AppNavHost(
                     onClick  = { navController.navigateSingleTop(Routes.LOGS) },
                     icon     = { Icon(Icons.Default.Terminal, "Logs") },
                     label    = { Text("Logs") },
-                )
-                NavigationBarItem(
-                    selected = currentRoute == Routes.WARP,
-                    onClick  = { navController.navigateSingleTop(Routes.WARP) },
-                    icon     = { Icon(Icons.Default.VpnKey, "WARP") },
-                    label    = { Text("WARP") },
                 )
             }
         }
@@ -156,11 +155,19 @@ fun AppNavHost(
                     onNavigateImport    = { navController.navigate(Routes.IMPORT) },
                     onNavigateCountries = { navController.navigate(Routes.COUNTRIES) },
                     onRestartAwg        = vm::restartAwg,
-                    onWarpClick         = { navController.navigate(Routes.WARP) },
                 )
             }
             composable(Routes.IMPORT) {
-                ImportScreen(vm = vm, onImported = { navController.popBackStack() })
+                ImportScreen(
+                    vm = vm,
+                    onImported = { navController.popBackStack() },
+                    onNavigateWarp = { navController.navigate(Routes.WARP) },
+                )
+            }
+            composable(Routes.WARP) {
+                WarpGenerateScreen(
+                    onDone = { navController.popBackStack() },
+                )
             }
             composable(Routes.COUNTRIES) {
                 CountryBrowserScreen(
@@ -175,11 +182,6 @@ fun AppNavHost(
             }
             composable(Routes.LOGS) {
                 LogsScreen()
-            }
-            composable(Routes.WARP) {
-                WarpGenerateScreen(
-                    onDone = { navController.popBackStack() },
-                )
             }
             composable(Routes.PEERS) { backStack ->
                 val rawKey = backStack.arguments?.getString("countryKey") ?: ""

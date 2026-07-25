@@ -30,7 +30,6 @@ import net.yggawg.mobile.vpn.YggVpnService
 import net.yggawg.mobile.vpn.parseYggAddrBytes
 
 class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
-
     private val prefs = app.getSharedPreferences("yggawg", Context.MODE_PRIVATE)
     private val db    = PeerDatabase.getInstance(app)
     val repo          = PeerRepository(db, app)
@@ -42,7 +41,6 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
     private val _tunnelStatus = MutableStateFlow(TunnelStatus())
     val tunnelStatus: StateFlow<TunnelStatus> = _tunnelStatus.asStateFlow()
 
-    /** Convenience derived flow — overall VPN state only. */
     val vpnState: StateFlow<VpnState> = _tunnelStatus
         .map { it.overall }
         .stateIn(viewModelScope, SharingStarted.Eagerly, VpnState.IDLE)
@@ -50,7 +48,6 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
     private val _awgConfig = MutableStateFlow<AwgConfig?>(null)
     val awgConfig: StateFlow<AwgConfig?> = _awgConfig.asStateFlow()
 
-    /** Raw text of the imported .conf file; used for display so no fields are lost. */
     private val _rawConfText = MutableStateFlow<String?>(null)
     val rawConfText: StateFlow<String?> = _rawConfText.asStateFlow()
 
@@ -103,16 +100,12 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
     // AWG config
     // -------------------------------------------------------------------------
 
-    /**
-     * Save AWG config. [rawText] is the original .conf file content and is stored
-     * separately so the display can show all lines without round-trip loss.
-     */
     fun saveAwgConfig(config: AwgConfig, rawText: String) {
         _awgConfig.value = config
         _rawConfText.value = rawText
         prefs.edit()
-            .putString("awg_conf", config.toConfString())   // used when starting VPN
-            .putString("awg_conf_raw", rawText)              // used for display
+            .putString("awg_conf", config.toConfString())
+            .putString("awg_conf_raw", rawText)
             .apply()
     }
 
@@ -199,16 +192,6 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearError() { _errorMessage.value = null }
 
-    /** Save a raw WARP config text (from WARP generator) and parse it. */
-    fun saveWarpConfig(confText: String) {
-        val config = runCatching { parseAwgConf(confText) }.getOrNull()
-        if (config != null) {
-            saveAwgConfig(config, confText)
-        } else {
-            _errorMessage.value = "Failed to parse generated WARP config"
-        }
-    }
-
     fun toggleYggDns() {
         val enabled = !_yggDnsEnabled.value
         _yggDnsEnabled.value = enabled
@@ -219,11 +202,9 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
     // Yggdrasil network
     // -------------------------------------------------------------------------
 
-    /** Ping the AWG server's Yggdrasil address through the overlay. */
     fun pingAwgServer() {
         if (YggNetworkState.pinging.value) return
         val endpoint = _awgConfig.value?.endpoint ?: return
-        // Extract IPv6 address from "[addr]:port" endpoint
         val addrBytes = parseYggAddrBytes(endpoint) ?: return
         val addrStr   = try {
             java.net.Inet6Address.getByAddress(addrBytes).hostAddress ?: return
