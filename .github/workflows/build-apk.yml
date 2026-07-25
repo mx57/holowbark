@@ -47,10 +47,16 @@ jobs:
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          export PATH=$HOME/go/bin:$PATH
 
       - name: Clone Go dependencies
         run: make clone-deps
+
+      - name: Add golang.org/x/mobile dependency
+        run: |
+          cd ~/proj/code/go_libs/yggdrasil-go
+          go get golang.org/x/mobile/bind
+          go get -tool golang.org/x/mobile/cmd/gobind
+          go mod tidy
 
       - name: Init gomobile
         run: gomobile init
