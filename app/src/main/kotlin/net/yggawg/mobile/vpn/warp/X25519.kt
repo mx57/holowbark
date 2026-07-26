@@ -73,7 +73,11 @@ object X25519 {
 
     private fun decodeU(b: ByteArray): LongArray {
         val h = zero()
-        for (i in 0 until 16) if (i < b.size) h[i] = b[i].toInt().toLong() and 0xFF
+        for (i in 0 until 16) {
+            val b0 = if (2 * i < b.size) b[2 * i].toInt() and 0xFF else 0
+            val b1 = if (2 * i + 1 < b.size) b[2 * i + 1].toInt() and 0xFF else 0
+            h[i] = (b0 or (b1 shl 8)).toLong()
+        }
         h[15] = h[15] and 0x7FFF
         return h
     }
@@ -81,8 +85,11 @@ object X25519 {
     private fun encode(h: LongArray): ByteArray {
         val t = h.copyOf()
         reduce(t)
-        val out = ByteArray(16)
-        for (i in 0 until 16) out[i] = (t[i].toInt() and 0xFF).toByte()
+        val out = ByteArray(32)
+        for (i in 0 until 16) {
+            out[2 * i] = (t[i].toInt() and 0xFF).toByte()
+            out[2 * i + 1] = ((t[i].toInt() ushr 8) and 0xFF).toByte()
+        }
         return out
     }
 
