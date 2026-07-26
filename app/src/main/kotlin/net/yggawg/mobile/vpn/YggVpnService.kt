@@ -186,15 +186,12 @@ class YggVpnService : VpnService() {
         }
         // Use the real Yggdrasil address so replies to user-initiated connections
         // are routed correctly through the overlay back to this node.
-        // Try /7 first (covers 200::/7 overlay range), fall back to /128 host address.
+        // Always use /128 (host address) because /7 crashes the system's
+        // VpnManagerService.establishVpn call on many Android versions.
         // Skip if yggAddress is empty or not a valid IPv6 address.
         if (yggAddress.isNotEmpty() && yggAddress != "200::") {
-            runCatching { builder.addAddress(yggAddress, 7) }
-                .onFailure {
-                    AppLogger.w(TAG, "addAddress $yggAddress/7 failed: $it — trying /128")
-                    runCatching { builder.addAddress(yggAddress, 128) }
-                        .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
-                }
+            runCatching { builder.addAddress(yggAddress, 128) }
+                .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
         } else {
             AppLogger.w(TAG, "No valid Yggdrasil address — skipping IPv6 TUN address")
         }

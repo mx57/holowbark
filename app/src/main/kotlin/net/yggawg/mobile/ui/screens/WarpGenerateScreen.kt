@@ -20,11 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.yggawg.mobile.vpn.warp.WarpAccount
+import net.yggawg.mobile.config.parseAwgConf
 import net.yggawg.mobile.vpn.warp.WarpApiClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WarpGenerateScreen(onDone: () -> Unit) {
+fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isGenerating by remember { mutableStateOf(false) }
@@ -107,6 +108,8 @@ fun WarpGenerateScreen(onDone: () -> Unit) {
                                 prefs.edit()
                                     .putString("warp_account", result.toJson().toString())
                                     .apply()
+
+                                onConfigGenerated(result.toConfString())
                             } catch (e: WarpApiClient.WarpException) {
                                 errorText = e.message
                             } catch (e: Exception) {
