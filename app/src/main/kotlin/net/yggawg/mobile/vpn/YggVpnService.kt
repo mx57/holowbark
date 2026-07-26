@@ -174,7 +174,8 @@ class YggVpnService : VpnService() {
             for (part in parts) {
                 val slash = part.indexOf('/')
                 val ip     = if (slash >= 0) part.substring(0, slash) else part
-                val prefix = if (slash >= 0) part.substring(slash + 1).toIntOrNull() ?: 32 else 32
+                val defaultPrefix = if (":" in ip) 128 else 32
+                val prefix = if (slash >= 0) part.substring(slash + 1).toIntOrNull() ?: defaultPrefix else defaultPrefix
                 runCatching { builder.addAddress(ip, prefix) }
                     .onFailure { AppLogger.w(TAG, "addAddress $ip/$prefix: $it") }
                     .onSuccess { wgAddresses.add(ip) }
