@@ -137,29 +137,48 @@ object X25519 {
     private fun inv(a: LongArray): LongArray {
         var t = a.copyOf()
         // p-2 = 2^255 - 21: binary = 111...1011 (253 ones, then 0, 1, 1)
-        // First 252 squarings (all bits are 1)
-        for (i in 0 until 252) t = sq(t)
-        // Bit 252..1: all ones → multiply by a each step
-        for (i in 0 until 252) { t = sq(t); t = mul(t, a) }
-        // Bits 1,0 of p-2 = "11"
-        // But we already did 252 squarings above; we need exactly 254 squarings total
-        // and multiply at the '1' bit positions of (p-2)
-        // Simpler: redo with binary exponent
+        // First 253 squarings (all bits are 1) -> wait, actually exponent 2^255-21 means 254 operations.
+        // It's much simpler to just use optimized addition chain.
+        // Let's rewrite it correctly.
+        var t2 = sq(a)
+        t2 = mul(t2, a) // a^3
+        var t3 = sq(t2)
+        t3 = sq(t3)
+        t3 = mul(t3, t2) // a^15
+        var t4 = t3
+        for (i in 0 until 4) t4 = sq(t4)
+        t4 = mul(t4, t3) // a^(2^8 - 1)
+        var t5 = t4
+        for (i in 0 until 8) t5 = sq(t5)
+        t5 = mul(t5, t4) // a^(2^16 - 1)
+        var t6 = t5
+        for (i in 0 until 16) t6 = sq(t6)
+        t6 = mul(t6, t5) // a^(2^32 - 1)
+        var t7 = t6
+        for (i in 0 until 32) t7 = sq(t7)
+        t7 = mul(t7, t6) // a^(2^64 - 1)
+        var t8 = t7
+        for (i in 0 until 64) t8 = sq(t8)
+        t8 = mul(t8, t7) // a^(2^128 - 1)
+        var t9 = t8
+        for (i in 0 until 125) t9 = sq(t9) // 253 bits total: 128 + 125
+        t9 = mul(t9, t8) // wait, 128+125 = 253 bits.
+        // actually let's just do square and multiply correctly using the exact binary exponent!
+
         return inv2(a)
     }
 
     private fun inv2(a: LongArray): LongArray {
-        var t = a.copyOf()
         // p-2 as bits, MSB first (bit 254 down to 0)
         // p = 2^255 - 19, p-2 = 2^255 - 21
-        // Bit 254..0: [1,1,1,...,1,0,1,1] — 253 ones, 0, 1, 1
-        // Actually: p-2 in hex = 7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED
-        // Last 8 bits: 11101101 = 0xED
+        // Actually: p-2 in hex = 7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEB
+        // Last 8 bits: 11101011 = 0xEB
         val exp = ByteArray(32)
-        exp[0] = 0xED.toByte()
+        exp[0] = 0xEB.toByte()
         for (i in 1 until 31) exp[i] = 0xFF.toByte()
         exp[31] = 0x7F
 
+        var t = one()
         var started = false
         for (byteIdx in 31 downTo 0) {
             for (bitIdx in 7 downTo 0) {
