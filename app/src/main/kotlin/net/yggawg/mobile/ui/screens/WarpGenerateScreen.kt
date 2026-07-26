@@ -20,17 +20,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.yggawg.mobile.vpn.warp.WarpAccount
+import net.yggawg.mobile.config.parseAwgConf
 import net.yggawg.mobile.vpn.warp.WarpApiClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WarpGenerateScreen(onDone: () -> Unit) {
+fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isGenerating by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var account by remember { mutableStateOf<WarpAccount?>(null) }
     var showConf by remember { mutableStateOf(false) }
+    var customEndpoint by remember { mutableStateOf("") }
+    var licenseKey by remember { mutableStateOf("") }
 
     errorText?.let { msg ->
         AlertDialog(
@@ -91,6 +94,23 @@ fun WarpGenerateScreen(onDone: () -> Unit) {
                     }
                 }
 
+                OutlinedTextField(
+                    value = customEndpoint,
+                    onValueChange = { customEndpoint = it },
+                    label = { Text("Custom Endpoint (Optional)") },
+                    placeholder = { Text(WarpAccount.DEFAULT_ENDPOINT) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = licenseKey,
+                    onValueChange = { licenseKey = it },
+                    label = { Text("WARP+ License Key (Optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
                 Button(
                     onClick = {
                         isGenerating = true
@@ -98,7 +118,10 @@ fun WarpGenerateScreen(onDone: () -> Unit) {
                         scope.launch {
                             try {
                                 val client = WarpApiClient()
-                                val result = client.register()
+                                var result = client.register(licenseKey.ifBlank { null })
+                                if (customEndpoint.isNotBlank()) {
+                                    result = result.copy(endpoint = customEndpoint.trim())
+                                }
                                 account = result
                                 // Cache in SharedPreferences
                                 val prefs = context.getSharedPreferences(
@@ -107,6 +130,8 @@ fun WarpGenerateScreen(onDone: () -> Unit) {
                                 prefs.edit()
                                     .putString("warp_account", result.toJson().toString())
                                     .apply()
+
+                                onConfigGenerated(result.toConfString())
                             } catch (e: WarpApiClient.WarpException) {
                                 errorText = e.message
                             } catch (e: Exception) {

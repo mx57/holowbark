@@ -166,6 +166,14 @@ fun AppNavHost(
             }
             composable(Routes.WARP) {
                 WarpGenerateScreen(
+                    onConfigGenerated = { confString ->
+                        try {
+                            val config = net.yggawg.mobile.config.parseAwgConf(confString)
+                            vm.saveAwgConfig(config, confString)
+                        } catch (e: Exception) {
+                            net.yggawg.mobile.AppLogger.e("MainActivity", "Failed to parse generated WARP config: ${e.message}")
+                        }
+                    },
                     onDone = { navController.popBackStack() },
                 )
             }
