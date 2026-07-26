@@ -32,6 +32,8 @@ fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: 
     var errorText by remember { mutableStateOf<String?>(null) }
     var account by remember { mutableStateOf<WarpAccount?>(null) }
     var showConf by remember { mutableStateOf(false) }
+    var customEndpoint by remember { mutableStateOf("") }
+    var licenseKey by remember { mutableStateOf("") }
 
     errorText?.let { msg ->
         AlertDialog(
@@ -92,6 +94,23 @@ fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: 
                     }
                 }
 
+                OutlinedTextField(
+                    value = customEndpoint,
+                    onValueChange = { customEndpoint = it },
+                    label = { Text("Custom Endpoint (Optional)") },
+                    placeholder = { Text(WarpAccount.DEFAULT_ENDPOINT) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = licenseKey,
+                    onValueChange = { licenseKey = it },
+                    label = { Text("WARP+ License Key (Optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
                 Button(
                     onClick = {
                         isGenerating = true
@@ -99,7 +118,10 @@ fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: 
                         scope.launch {
                             try {
                                 val client = WarpApiClient()
-                                val result = client.register()
+                                var result = client.register(licenseKey.ifBlank { null })
+                                if (customEndpoint.isNotBlank()) {
+                                    result = result.copy(endpoint = customEndpoint.trim())
+                                }
                                 account = result
                                 // Cache in SharedPreferences
                                 val prefs = context.getSharedPreferences(

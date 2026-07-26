@@ -205,7 +205,9 @@ class YggVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // API 33+: catch-all routes + excludeRoute per IP (no route-count explosion).
             builder.addRoute("0.0.0.0", 0)
-            builder.addRoute("::", 0)
+            if (physicalHasIPv6 || wgAddresses.any { ":" in it }) {
+                builder.addRoute("::", 0)
+            }
             (ipv4Exclusions + ipv6Exclusions).forEach { ip ->
                 val prefix = if (ip is Inet4Address) 32 else 128
                 runCatching { builder.excludeRoute(IpPrefix(ip, prefix)) }
@@ -231,7 +233,9 @@ class YggVpnService : VpnService() {
                 }
                 AppLogger.i(TAG, "Routes: split IPv4 (${ipv4Routes.size}) + split IPv6 (${ipv6Routes.size}), excl ${ipv4Exclusions.size}+${ipv6Exclusions.size} (API<33)")
             } else {
-                builder.addRoute("::", 0)
+                if (physicalHasIPv6 || wgAddresses.any { ":" in it }) {
+                    builder.addRoute("::", 0)
+                }
                 AppLogger.i(TAG, "Routes: split IPv4 (${ipv4Routes.size}) + ::/0, excl ${ipv4Exclusions.size} IPv4 (API<33, no phys IPv6)")
             }
         }
@@ -255,8 +259,13 @@ class YggVpnService : VpnService() {
             }
             AppLogger.i(TAG, "Yggdrasil DNS enabled (${YGG_DNS_SERVERS.size} resolvers)")
         }
-        val fd = builder.establish() ?: run {
-            AppLogger.e(TAG, "establish() returned null — VPN permission not granted")
+        val fd = try {
+            builder.establish()
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "builder.establish() failed: ${e.message}", e)
+            null
+        } ?: run {
+            AppLogger.e(TAG, "establish() returned null — VPN permission not granted or failed")
             updateStatus { copy(overall = VpnState.ERROR) }
             return
         }
