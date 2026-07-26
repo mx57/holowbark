@@ -75,6 +75,9 @@ class YggVpnService : VpnService() {
     // -------------------------------------------------------------------------
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Calling startForeground immediately to avoid ForegroundServiceDidNotStartInTimeException
+        startForeground(NOTIF_ID, buildNotification(status))
+
         return when (intent?.action) {
             ACTION_STOP        -> { stopVpn(); START_NOT_STICKY }
             ACTION_RESTART_AWG -> { restartAwg(); START_STICKY }
@@ -173,9 +176,9 @@ class YggVpnService : VpnService() {
             val parts = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
             for (part in parts) {
                 val slash = part.indexOf('/')
-                val ip     = if (slash >= 0) part.substring(0, slash) else part
+                val ip     = if (slash >= 0) part.substring(0, slash).trim() else part
                 val defaultPrefix = if (":" in ip) 128 else 32
-                val prefix = if (slash >= 0) part.substring(slash + 1).toIntOrNull() ?: defaultPrefix else defaultPrefix
+                val prefix = if (slash >= 0) part.substring(slash + 1).trim().toIntOrNull() ?: defaultPrefix else defaultPrefix
                 runCatching { builder.addAddress(ip, prefix) }
                     .onFailure { AppLogger.w(TAG, "addAddress $ip/$prefix: $it") }
                     .onSuccess { wgAddresses.add(ip) }
@@ -292,7 +295,6 @@ class YggVpnService : VpnService() {
             }
         }
 
-        startForeground(NOTIF_ID, buildNotification(TunnelStatus()))
         AppLogger.i(TAG, "VPN started, waiting for peer connections")
     }
 

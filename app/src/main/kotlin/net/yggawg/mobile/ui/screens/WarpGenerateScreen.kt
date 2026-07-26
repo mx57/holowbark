@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.yggawg.mobile.vpn.warp.WarpAccount
-import net.yggawg.mobile.config.parseAwgConf
 import net.yggawg.mobile.vpn.warp.WarpApiClient
 
 @OptIn(ExperimentalMaterial3Api::class)
