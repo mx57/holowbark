@@ -191,19 +191,25 @@ class YggVpnService : VpnService() {
         // are routed correctly through the overlay back to this node.
         // Always use /128 (host address) because /7 crashes the system's
         // VpnManagerService.establishVpn call on many Android versions.
-        // Skip if yggAddress is empty or not a valid IPv6 address.
-        if (yggAddress.isNotEmpty() && yggAddress != "200::") {
-            runCatching { builder.addAddress(yggAddress, 128) }
-                .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
+        // Skip if we are connecting to a standard WARP/WG server (awgServerAddrBytes == null)
+        // because adding Yggdrasil addresses/routes without overlay functionality causes crashes
+        // on some devices when the interface is brought up.
+        if (awgServerAddrBytes != null) {
+            if (yggAddress.isNotEmpty() && yggAddress != "200::") {
+                runCatching { builder.addAddress(yggAddress, 128) }
+                    .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
+            } else {
+                AppLogger.w(TAG, "No valid Yggdrasil address — skipping IPv6 TUN address")
+            }
+            // Tricks Android's DNS resolver into issuing AAAA queries even when there is no
+            // global IPv6 on the physical network. Without this single /128 host route the
+            // resolver skips AAAA lookups entirely, making Yggdrasil service names unresolvable.
+            // See android.googlesource.com/.../bionic/libc/dns/net/getaddrinfo.c#1935
+            runCatching { builder.addRoute("2000::", 128) }
+                .onFailure { AppLogger.w(TAG, "addRoute 2000::/128 failed: $it") }
         } else {
-            AppLogger.w(TAG, "No valid Yggdrasil address — skipping IPv6 TUN address")
+            AppLogger.i(TAG, "Non-Yggdrasil endpoint — skipping Yggdrasil TUN address & route setup")
         }
-        // Tricks Android's DNS resolver into issuing AAAA queries even when there is no
-        // global IPv6 on the physical network. Without this single /128 host route the
-        // resolver skips AAAA lookups entirely, making Yggdrasil service names unresolvable.
-        // See android.googlesource.com/.../bionic/libc/dns/net/getaddrinfo.c#1935
-        runCatching { builder.addRoute("2000::", 128) }
-            .onFailure { AppLogger.w(TAG, "addRoute 2000::/128 failed: $it") }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // API 33+: catch-all routes + excludeRoute per IP (no route-count explosion).
