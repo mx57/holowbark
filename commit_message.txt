@@ -1,0 +1,8 @@
+🐛 Fix: VPN connection and WARP UI issues
+
+* 🐞 **Проблема:**
+  1. Вылет при запуске VPN (`java.lang.IllegalStateException: Cannot set address`) из-за некорректного префикса `/128` на физической сети или `addRoute` без адресов.
+  2. При нажатии "Stop" в UI отправлялся интент, который мог не остановить сервис корректно.
+  3. WARP не соединялся после генерации.
+* 🔍 **Причина:** В логах видно `Cannot set address — java.lang.IllegalStateException`. Android `VpnService.Builder` требует, чтобы добавленные IP адреса маршрутизировались корректно.
+* ✅ **Решение:** Проверить логику `VpnService` для добавления IPv6 адресов и маршрутов Yggdrasil.
