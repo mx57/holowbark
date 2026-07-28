@@ -43,6 +43,7 @@ class YggVpnService : VpnService() {
         const val EXTRA_AWG_CONF   = "awg_conf"
         const val EXTRA_YGG_PEERS  = "ygg_peers"      // ArrayList<String> of peer addresses
         const val EXTRA_YGG_KEY    = "ygg_key"
+        const val EXTRA_MULTICAST  = "ygg_multicast"  // boolean
 
         // Community Yggdrasil DNS resolvers (Revertron). Support ICANN, ALFIS, OpenNIC, ad blocking.
         // All in 200::/7 — routed through Yggdrasil overlay automatically.
@@ -50,25 +51,18 @@ class YggVpnService : VpnService() {
             "308:62:45:62::",   // Amsterdam
             "308:84:68:55::",   // Frankfurt
             "308:25:40:bd::",   // Bratislava
-            "308:c8:48:45::",   // Buffalo
+            "308:26:d:c8::",    // Amsterdam 2
         )
-        const val EXTRA_MULTICAST  = "ygg_multicast"  // Boolean — enable LAN multicast discovery
     }
 
-    private var tunFd: ParcelFileDescriptor? = null
-    private var ygg: YggdrasilManager? = null
-    private var awg: AwgManager? = null
+    private var status = TunnelStatus()
     private var router: PacketRouter? = null
+    private var awgMgr: AwgManager?   = null
+    private var yggMgr: YggdrasilManager? = null
 
-    // Manages deferred AWG start (ping wait) + bridge loop; cancelled/restarted on restartAwg()
-    private var awgLifecycleScope: CoroutineScope? = null
-
-    // Saved for restartAwg() so we don't need to re-parse the intent
-    private var savedAwgConfig: AwgConfig? = null
-    private var savedAwgServerAddrBytes: ByteArray? = null
-    private var savedAwgServerPort: Int = 44555
-
-    @Volatile private var status = TunnelStatus()
+    // Job specifically for the AWG keepalive hack
+    private var keepaliveJob: kotlinx.coroutines.Job? = null
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -79,7 +73,7 @@ class YggVpnService : VpnService() {
         startForeground(NOTIF_ID, buildNotification(status))
 
         return when (intent?.action) {
-            ACTION_STOP        -> { stopVpn(); START_NOT_STICKY }
+            ACTION_STOP        -> { stopVpn(); stopSelf(); START_NOT_STICKY }
             ACTION_RESTART_AWG -> { restartAwg(); START_STICKY }
             else -> {
                 val awgConfText = intent?.getStringExtra(EXTRA_AWG_CONF)
@@ -94,22 +88,29 @@ class YggVpnService : VpnService() {
         }
     }
 
-    override fun onRevoke() { stopVpn() }
-    override fun onDestroy() { stopVpn(); super.onDestroy() }
+    override fun onDestroy() {
+        stopVpn()
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    override fun onRevoke() {
+        AppLogger.w(TAG, "VPN permission revoked by system or user")
+        stopVpn()
+        super.onRevoke()
+    }
 
     // -------------------------------------------------------------------------
-    // VPN start / stop
+    // Core Logic
     // -------------------------------------------------------------------------
 
-    private fun startVpn(awgConfig: AwgConfig?, peers: List<String>, yggKey: String,
-                          multicast: Boolean = false) {
-        if (tunFd != null) {
-            AppLogger.w(TAG, "VPN already running — ignoring duplicate start")
+    private fun startVpn(awgConfig: AwgConfig?, peers: List<String>, yggKey: String, multicast: Boolean) {
+        if (status.overall != VpnState.IDLE && status.overall != VpnState.DISCONNECTED && status.overall != VpnState.ERROR) {
             return
         }
         AppLogger.i(TAG, "startVpn peers=${peers.size} awg=${awgConfig?.endpoint} multicast=$multicast")
-        updateStatus { copy(overall = VpnState.CONNECTING, ygg = LayerState.STARTING,
-                           awg = if (awgConfig != null) LayerState.STARTING else LayerState.IDLE) }
+        updateStatus { copy(ygg = LayerState.STARTING, awg = LayerState.STARTING, overall = VpnState.CONNECTING) }
+        YggServiceAccess.manager = null
 
         val peerIps: Set<InetAddress> = peers.flatMap { parsePeerHosts(it) }.toSet()
 
@@ -194,7 +195,7 @@ class YggVpnService : VpnService() {
         // Skip if we are connecting to a standard WARP/WG server (awgServerAddrBytes == null)
         // because adding Yggdrasil addresses/routes without overlay functionality causes crashes
         // on some devices when the interface is brought up.
-        if (awgServerAddrBytes != null) {
+        if (yggKey.isNotEmpty() || awgServerAddrBytes != null) {
             if (yggAddress.isNotEmpty() && yggAddress != "200::") {
                 runCatching { builder.addAddress(yggAddress, 128) }
                     .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
@@ -271,111 +272,111 @@ class YggVpnService : VpnService() {
         val fd = try {
             builder.establish()
         } catch (e: Exception) {
-            AppLogger.e(TAG, "builder.establish() failed: ${e.message}", e)
+            AppLogger.e(TAG, "builder.establish() failed: ${e.message} — ${e.javaClass.name}")
             null
-        } ?: run {
+        }
+        if (fd == null) {
             AppLogger.e(TAG, "establish() returned null — VPN permission not granted or failed")
+            yggMgr.stop()
             updateStatus { copy(overall = VpnState.ERROR) }
+            stopForeground(STOP_FOREGROUND_REMOVE)
             return
         }
-        tunFd = fd
 
-        val routerObj = PacketRouter(tunFd = fd, ygg = yggMgr, awg = awgMgr)
-        ygg    = yggMgr
-        awg    = awgMgr
-        router = routerObj
+        this.yggMgr = yggMgr
+        this.awgMgr = awgMgr
+        this.router = PacketRouter(fd, yggMgr, awgMgr)
         YggServiceAccess.manager = yggMgr
-
-        routerObj.start()
+        router?.start()
 
         if (awgConfig != null) {
+            awgMgr.start(awgConfig)
             if (awgServerAddrBytes != null) {
-                // Defer AWG start: wait for Yggdrasil peers, then ping server, then start tunnel
-                savedAwgConfig          = awgConfig
-                savedAwgServerAddrBytes = awgServerAddrBytes
-                savedAwgServerPort      = awgServerPort
-                launchAwgLifecycle(awgConfig, awgMgr, yggMgr, awgServerAddrBytes, awgServerPort)
-            } else {
-                // Non-Yggdrasil endpoint: start AWG immediately (no bridge needed)
-                awgMgr.start(awgConfig)
+                // If the endpoint is an Yggdrasil address, start a keepalive coroutine
+                // that injects packets into AWG to trigger handshake over the bridge.
+                startKeepaliveHacks(awgMgr, yggMgr, awgServerAddrBytes, awgServerPort)
             }
+        } else {
+            AppLogger.w(TAG, "No AWG config provided — running Yggdrasil-only mode")
         }
-
-        AppLogger.i(TAG, "VPN started, waiting for peer connections")
     }
 
-    /**
-     * Launch (or re-launch) the AWG lifecycle coroutine:
-     *   1. Wait until at least one Yggdrasil peer is UP
-     *   2. Ping the AWG server through Yggdrasil (retry every 5 s on failure)
-     *   3. Start the AWG backend
-     *   4. Run the AWG→Ygg bridge loop
-     */
-    private fun launchAwgLifecycle(
-        awgConfig: AwgConfig,
+    private fun stopVpn() {
+        if (status.overall == VpnState.IDLE || status.overall == VpnState.DISCONNECTED) return
+        AppLogger.i(TAG, "stopVpn")
+
+        keepaliveJob?.cancel()
+        keepaliveJob = null
+
+        router?.stop()
+        awgMgr?.stop()
+        yggMgr?.stop()
+        router = null
+        awgMgr = null
+        yggMgr = null
+        YggServiceAccess.manager = null
+
+        updateStatus { TunnelStatus(overall = VpnState.DISCONNECTED) }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
+    private fun restartAwg() {
+        AppLogger.i(TAG, "restartAwg")
+        val mgr = awgMgr
+        if (mgr == null) {
+            AppLogger.w(TAG, "restartAwg: awgMgr is null")
+            return
+        }
+        val confText = getSharedPreferences("yggawg", android.content.Context.MODE_PRIVATE)
+            .getString("awg_conf", null)
+        if (confText == null) {
+            AppLogger.w(TAG, "restartAwg: no config")
+            return
+        }
+        val cfg = runCatching { parseAwgConf(confText) }.getOrNull() ?: return
+        mgr.stop()
+        updateStatus { copy(awg = LayerState.STARTING, overall = VpnState.CONNECTING) }
+        mgr.start(cfg)
+    }
+
+    // -------------------------------------------------------------------------
+    // Hacks for bridging
+    // -------------------------------------------------------------------------
+
+    private fun startKeepaliveHacks(
         awgMgr: AwgManager,
         yggMgr: YggdrasilManager,
         serverAddrBytes: ByteArray,
         serverPort: Int,
     ) {
-        awgLifecycleScope?.cancel()
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        awgLifecycleScope = scope
-
-        scope.launch {
-            // 1. Wait for at least one Yggdrasil peer to be UP
-            AppLogger.i(TAG, "AWG: waiting for Yggdrasil peer…")
-            YggNetworkState.peers.first { it.any { p -> p.up } }
-            if (!isActive) return@launch
-
-            // 2. Ping AWG server with retries until reachable
-            val addrStr = runCatching {
-                Inet6Address.getByAddress(serverAddrBytes).hostAddress
-            }.getOrNull() ?: run {
-                AppLogger.e(TAG, "AWG: cannot format server address")
-                updateStatus { copy(awg = LayerState.ERROR) }
+        keepaliveJob?.cancel()
+        keepaliveJob = scope.launch(Dispatchers.IO) {
+            // 1. Wait for Yggdrasil to connect to at least one peer
+            AppLogger.d(TAG, "KeepaliveHack: waiting for Ygg peers...")
+            try {
+                YggNetworkState.peers.first { it.any { p -> p.up } }
+            } catch (e: Exception) {
+                AppLogger.d(TAG, "KeepaliveHack: peers wait aborted")
                 return@launch
             }
+            AppLogger.d(TAG, "KeepaliveHack: Ygg is up, starting dummy ping loop")
 
-            var attempt = 0
-            while (isActive) {
-                attempt++
-                AppLogger.i(TAG, "AWG: pinging $addrStr (attempt $attempt)…")
-                val ms = yggMgr.pingYgg(addrStr, timeoutMs = 5000L)
-                if (ms != null) {
-                    AppLogger.i(TAG, "AWG server reachable in ${ms}ms — starting tunnel")
-                    break
-                }
-                AppLogger.w(TAG, "AWG server unreachable, retrying in 5s")
-                delay(5_000)
-            }
-            if (!isActive) return@launch
-
-            // 3. Start AWG backend
-            awgMgr.start(awgConfig)
-            // Give the Go runtime a moment to fully initialise the WG device
-            delay(300)
-
-            // 4. Bridge loop: AWG outbound WG packets → encapsulate in IPv6 UDP → Yggdrasil
-            AppLogger.i(TAG, "AWG→Ygg bridge started, ourAddr=${yggMgr.getAddress()} serverAddr=$addrStr:$serverPort")
-
-            // Trigger WG handshake; repeat every 3 s in a separate job until the first
-            // WG packet arrives (handshake initiated) so we don't hang forever on a single trigger.
+            // 2. Continually inject dummy pings into AWG to force Handshake Initiation packets
+            // out of the Go layer, so we can wrap and send them through Yggdrasil.
             val triggerJob = launch {
+                val dummyPkt = buildDummyIPv4()
                 while (isActive) {
-                    AppLogger.d(TAG, "AWG bridge: sending handshake trigger packet")
-                    awgMgr.writePacket(buildDummyIPv4())
+                    awgMgr.writePacket(dummyPkt)
                     delay(3_000)
                 }
             }
+
+            // 3. Read encrypted WG packets (handshake attempts) from AWG layer,
+            // wrap in IPv6 UDP, and send via Yggdrasil overlay.
             var wgPktCount = 0
             while (isActive) {
-                val wgPkt = awgMgr.recvWGPacket()
-                if (wgPkt == null) {
-                    AppLogger.w(TAG, "AWG bridge: recvWGPacket returned null — exiting bridge loop")
-                    break
-                }
-                if (wgPktCount == 0) triggerJob.cancel()   // handshake initiated — stop sending triggers
+                val wgPkt = awgMgr.recvWGPacket() ?: break
+                if (wgPkt.isEmpty()) continue
                 wgPktCount++
                 val ourAddrStr   = yggMgr.getAddress()
                 val ourAddrBytes = parseYggSelfAddr(ourAddrStr)
@@ -397,49 +398,42 @@ class YggVpnService : VpnService() {
         }
     }
 
-    private fun stopVpn() {
-        AppLogger.i(TAG, "stopVpn")
-        YggServiceAccess.manager = null
-        YggNetworkState.reset()
-        awgLifecycleScope?.cancel(); awgLifecycleScope = null
-        savedAwgConfig = null; savedAwgServerAddrBytes = null
-        router?.stop(); awg?.stop(); ygg?.stop(); tunFd?.close()
-        router = null; awg = null; ygg = null; tunFd = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-        status = TunnelStatus(overall = VpnState.DISCONNECTED)
-        broadcastStatus()
+    private fun parsePeerHosts(uri: String): List<InetAddress> {
+        val host = uri.substringAfter("://").substringBefore(':').trim('[', ']')
+        return runCatching { InetAddress.getAllByName(host).toList() }.getOrDefault(emptyList())
     }
 
-    /** Tear down and restart only the AWG layer (Yggdrasil keeps running). */
-    private fun restartAwg() {
-        val config    = savedAwgConfig          ?: run { AppLogger.w(TAG, "restartAwg: no config"); return }
-        val addrBytes = savedAwgServerAddrBytes ?: run { AppLogger.w(TAG, "restartAwg: no addr"); return }
-        val yggMgr    = ygg                    ?: run { AppLogger.w(TAG, "restartAwg: Ygg not running"); return }
-        val awgMgr    = awg                    ?: run { AppLogger.w(TAG, "restartAwg: AWG manager missing"); return }
+    /**
+     * True if the active network has at least one global IPv6 address.
+     * Used to decide whether to add `::/0` and IPv6 exclusion routes.
+     */
+    private fun hasPhysicalIPv6(): Boolean {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val props = cm.getLinkProperties(network) ?: return false
 
-        AppLogger.i(TAG, "restartAwg: tearing down AWG lifecycle")
-        awgLifecycleScope?.cancel(); awgLifecycleScope = null
-        awgMgr.stop()
-        updateStatus { copy(awg = LayerState.STARTING) }
-        launchAwgLifecycle(config, awgMgr, yggMgr, addrBytes, savedAwgServerPort)
-    }
-
-    fun updatePeers(newPeers: List<String>) {
-        ygg?.setPeers(newPeers)
+        // Look for global IPv6 addresses (not link-local fe80::/10, not loopback ::1)
+        for (linkAddr: LinkAddress in props.linkAddresses) {
+            val addr = linkAddr.address
+            if (addr is Inet6Address) {
+                if (!addr.isLinkLocalAddress && !addr.isLoopbackAddress) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     // -------------------------------------------------------------------------
-    // Status helpers
+    // State management
     // -------------------------------------------------------------------------
 
-    @Synchronized
-    private fun updateStatus(block: TunnelStatus.() -> TunnelStatus) {
-        val s = status.block()
+    private fun updateStatus(modify: TunnelStatus.() -> TunnelStatus) {
+        val s = status.modify()
         val overall = when {
-            s.ygg == LayerState.ERROR || s.awg == LayerState.ERROR -> VpnState.ERROR
-            s.ygg == LayerState.UP && (s.awg == LayerState.UP || s.awg == LayerState.IDLE) -> VpnState.CONNECTED
-            s.ygg == LayerState.STARTING || s.awg == LayerState.STARTING -> VpnState.CONNECTING
+            s.overall == VpnState.ERROR -> VpnState.ERROR
+            s.awg == LayerState.UP      -> VpnState.CONNECTED
+            s.awg == LayerState.ERROR || s.ygg == LayerState.ERROR -> VpnState.ERROR
             else -> s.overall
         }
         status = s.copy(overall = overall)
@@ -504,48 +498,4 @@ class YggVpnService : VpnService() {
         }
         return builder.build()
     }
-}
-
-/**
- * Return true if the active physical network has a globally routable IPv6 address.
- * Used to decide whether IPv6 peer exclusions are worth adding to VPN routes.
- *
- * Excluded address ranges (not globally routable):
- *   ::1/128       loopback
- *   fe80::/10     link-local
- *   fc00::/7      ULA (Unique Local Addresses — private, like RFC-1918 for IPv4)
- *   200::/7       Yggdrasil overlay
- */
-internal fun VpnService.hasPhysicalIPv6(): Boolean {
-    val cm = getSystemService(ConnectivityManager::class.java) ?: return false
-    val network = cm.activeNetwork ?: return false
-    val lp = cm.getLinkProperties(network) ?: return false
-    return lp.linkAddresses.any { la: LinkAddress ->
-        val a = la.address
-        a is Inet6Address
-            && !a.isLinkLocalAddress
-            && !a.isLoopbackAddress
-            && (a.address[0].toInt() and 0xFE) != 0x02  // not Yggdrasil 200::/7
-            && (a.address[0].toInt() and 0xFE) != 0xFC  // not ULA fc00::/7
-    }
-}
-
-/**
- * Resolve all IP addresses for a Yggdrasil peer URI.
- * Returns every address (A + AAAA) so all are excluded from VPN routes.
- * For numeric IPs the result is a single-element list (no DNS call).
- * For hostnames, DNS is queried before the VPN tunnel is established.
- *
- *   "tcp://89.44.86.85:12345"            → [89.44.86.85]
- *   "quic://[2a09:5302:ffff::132a]:65535" → [2a09:5302:ffff::132a]
- *   "tls://hostname.example.com:443"     → [<all A/AAAA records>] or [] on failure
- */
-internal fun parsePeerHosts(addr: String): List<InetAddress> {
-    val hostPart = addr.substringAfter("://")
-    val host = if (hostPart.startsWith("[")) {
-        hostPart.removePrefix("[").substringBefore("]")
-    } else {
-        hostPart.substringBefore(':')
-    }
-    return runCatching { InetAddress.getAllByName(host).toList() }.getOrDefault(emptyList())
 }

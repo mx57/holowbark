@@ -1,0 +1,13 @@
+--- app/src/main/kotlin/net/yggawg/mobile/vpn/warp/X25519.kt
++++ app/src/main/kotlin/net/yggawg/mobile/vpn/warp/X25519.kt
+@@ -142,10 +142,10 @@
+     /** Modular inverse via a^(p-2) = a^(2^255 - 21). */
+     private fun inv(a: LongArray): LongArray {
+         var c = a.copyOf()
+-        for (i in 1 until 254) {
++        for (i in 253 downTo 0) {
+             c = sq(c)
+             if (i != 2 && i != 4) {
+                 c = mul(c, a)
+             }
+         }
