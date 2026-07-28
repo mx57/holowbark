@@ -79,7 +79,7 @@ class YggVpnService : VpnService() {
         startForeground(NOTIF_ID, buildNotification(status))
 
         return when (intent?.action) {
-            ACTION_STOP        -> { stopVpn(); START_NOT_STICKY }
+            ACTION_STOP        -> { stopVpn(); stopSelf(); START_NOT_STICKY }
             ACTION_RESTART_AWG -> { restartAwg(); START_STICKY }
             else -> {
                 val awgConfText = intent?.getStringExtra(EXTRA_AWG_CONF)
@@ -194,7 +194,7 @@ class YggVpnService : VpnService() {
         // Skip if we are connecting to a standard WARP/WG server (awgServerAddrBytes == null)
         // because adding Yggdrasil addresses/routes without overlay functionality causes crashes
         // on some devices when the interface is brought up.
-        if (awgServerAddrBytes != null) {
+        if (yggKey.isNotEmpty() || awgServerAddrBytes != null) {
             if (yggAddress.isNotEmpty() && yggAddress != "200::") {
                 runCatching { builder.addAddress(yggAddress, 128) }
                     .onFailure { AppLogger.w(TAG, "addAddress $yggAddress/128 failed: $it") }
