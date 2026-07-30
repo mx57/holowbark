@@ -70,11 +70,19 @@ class PacketRouter(
     }
 
     private fun dispatch(packet: ByteArray) {
-        val dst = packet.destinationAddress() ?: return
-        if (dst.isYggdrasil()) {
-            ygg.writePacket(packet)
-        } else {
+        if (packet.isEmpty()) return
+        val version = (packet[0].toInt() and 0xF0) ushr 4
+
+        if (version == 4) {
+            if (packet.size < 20) return
             awg.writePacket(packet)
+        } else if (version == 6) {
+            if (packet.size < 40) return
+            if (packet.parseIPv6DestIsYggdrasil()) {
+                ygg.writePacket(packet)
+            } else {
+                awg.writePacket(packet)
+            }
         }
     }
 
@@ -82,37 +90,10 @@ class PacketRouter(
     // Packet parsing helpers
     // -------------------------------------------------------------------------
 
-    private fun ByteArray.destinationAddress(): InetAddress? {
-        if (isEmpty()) return null
-        return when ((this[0].toInt() and 0xF0) ushr 4) {
-            4    -> parseIPv4Dest()
-            6    -> parseIPv6Dest()
-            else -> null
-        }
+    private fun ByteArray.parseIPv6DestIsYggdrasil(): Boolean {
+        if (size < 40) return false
+        // The destination address starts at offset 24.
+        // Yggdrasil addresses are 200::/7, so the first byte (offset 24) must match (byte & 0xFE) == 0x02.
+        return (this[24].toInt() and 0xFE) == 0x02
     }
-
-    /** IPv4: destination address at bytes [16..19] */
-    private fun ByteArray.parseIPv4Dest(): InetAddress? {
-        if (size < 20) return null
-        return try {
-            InetAddress.getByAddress(copyOfRange(16, 20))
-        } catch (e: UnknownHostException) { null }
-    }
-
-    /** IPv6: destination address at bytes [24..39] */
-    private fun ByteArray.parseIPv6Dest(): InetAddress? {
-        if (size < 40) return null
-        return try {
-            InetAddress.getByAddress(copyOfRange(24, 40))
-        } catch (e: UnknownHostException) { null }
-    }
-}
-
-/**
- * Yggdrasil overlay: 200::/7
- * First byte of IPv6 address with mask 0xFE == 0x02, i.e. byte ∈ {0x02, 0x03}.
- */
-fun InetAddress.isYggdrasil(): Boolean {
-    if (this !is Inet6Address) return false
-    return (address[0].toInt() and 0xFE) == 0x02
 }
