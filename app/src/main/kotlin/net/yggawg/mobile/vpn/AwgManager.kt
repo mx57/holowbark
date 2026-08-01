@@ -28,6 +28,7 @@ import net.yggawg.mobile.config.AwgConfig
  */
 class AwgManager(
     private val onPacketOut: (ByteArray) -> Unit,
+    private val onPacketOutBuffer: ((ByteArray, Int) -> Unit)? = null,
     /** Called on IO thread when AWG layer state changes. */
     private val onStatusChange: (LayerState) -> Unit = {},
 ) {
@@ -80,6 +81,15 @@ class AwgManager(
         }
     }
 
+    /** Write a plaintext IP packet from a buffer into the AWG stack for encryption and sending. */
+    fun writePacketBuffer(packet: ByteArray, len: Int) {
+        try {
+            backend?.sendPacketBuffer(packet, len.toLong())
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "sendPacketBuffer: $e")
+        }
+    }
+
     /**
      * Inject a WireGuard protocol packet (encrypted, from the server via Yggdrasil)
      * into the AWG device for decryption.
@@ -89,6 +99,18 @@ class AwgManager(
             backend?.sendWGPacket(wgPacket)
         } catch (e: Exception) {
             AppLogger.w(TAG, "sendWGPacket: $e")
+        }
+    }
+
+    /**
+     * Inject a WireGuard protocol packet (encrypted, from the server via Yggdrasil)
+     * into the AWG device for decryption from a buffer.
+     */
+    fun sendWGPacketBuffer(wgPacket: ByteArray, len: Int) {
+        try {
+            backend?.sendWGPacketBuffer(wgPacket, len.toLong())
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "sendWGPacketBuffer: $e")
         }
     }
 
@@ -109,21 +131,40 @@ class AwgManager(
 
     private fun readLoop(b: Backend, scope: CoroutineScope) {
         var firstPacket = true
+        val useBuffer = onPacketOutBuffer != null
+        val buf = if (useBuffer) ByteArray(65536) else null
         while (scope.isActive && backend != null) {
-            val pkt = try {
-                b.recvPacket()
-            } catch (e: Exception) {
-                if (scope.isActive) AppLogger.w(TAG, "recvPacket: $e")
-                null
-            }
-            if (pkt != null) {
-                if (firstPacket) {
-                    firstPacket = false
-                    AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
-                    onStatusChange(LayerState.UP)
+            if (useBuffer) {
+                val len = try {
+                    b.recvPacketBuffer(buf).toInt()
+                } catch (e: Exception) {
+                    if (scope.isActive) AppLogger.w(TAG, "recvPacketBuffer: $e")
+                    0
                 }
-                if (pkt.isNotEmpty()) {
-                    onPacketOut(pkt)
+                if (len > 0) {
+                    if (firstPacket) {
+                        firstPacket = false
+                        AppLogger.i(TAG, "WG handshake complete — tunnel UP ($len bytes)")
+                        onStatusChange(LayerState.UP)
+                    }
+                    onPacketOutBuffer?.invoke(buf!!, len)
+                }
+            } else {
+                val pkt = try {
+                    b.recvPacket()
+                } catch (e: Exception) {
+                    if (scope.isActive) AppLogger.w(TAG, "recvPacket: $e")
+                    null
+                }
+                if (pkt != null) {
+                    if (firstPacket) {
+                        firstPacket = false
+                        AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
+                        onStatusChange(LayerState.UP)
+                    }
+                    if (pkt.isNotEmpty()) {
+                        onPacketOut(pkt)
+                    }
                 }
             }
         }

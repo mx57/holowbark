@@ -97,6 +97,19 @@ fun ByteArray.extractWGPayload(expectedSrcAddr: ByteArray): ByteArray? {
     return copyOfRange(48, 48 + payloadLen)
 }
 
+fun ByteArray.extractWGPayloadBuffer(expectedSrcAddr: ByteArray, packetLen: Int): Int {
+    if (packetLen < 48) return 0
+    if ((this[0].toInt() and 0xF0) != 0x60) return 0
+    if (this[6] != 0x11.toByte()) return 0
+    for (i in 0..15) {
+        if (this[8 + i] != expectedSrcAddr[i]) return 0
+    }
+    val udpLen = ((this[44].toInt() and 0xFF) shl 8) or (this[45].toInt() and 0xFF)
+    val payloadLen = udpLen - 8
+    if (payloadLen <= 0 || packetLen < 48 + payloadLen) return 0
+    return payloadLen
+}
+
 /**
  * Parse the AWG server Yggdrasil address (IPv6) from an endpoint string like
  * "[200:4825:fd69:6d41:5475:a08a:8885:9542]:44555" → 16-byte array.
