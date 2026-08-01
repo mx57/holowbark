@@ -4,9 +4,6 @@ import kotlinx.coroutines.*
 import net.yggawg.mobile.AppLogger
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.Inet6Address
-import java.net.InetAddress
-import java.net.UnknownHostException
 
 /**
  * Userspace packet dispatcher sitting on the single TUN file descriptor.
@@ -65,54 +62,33 @@ class PacketRouter(
                 break
             }
             if (len <= 0) continue
-            dispatch(buf.copyOf(len))
+            dispatch(buf, len)
         }
     }
 
-    private fun dispatch(packet: ByteArray) {
-        val dst = packet.destinationAddress() ?: return
-        if (dst.isYggdrasil()) {
+    private fun dispatch(buf: ByteArray, len: Int) {
+        if (len <= 0) return
+
+        val isYgg = when ((buf[0].toInt() and 0xF0) ushr 4) {
+            4 -> {
+                if (len < 20) return
+                false
+            }
+            6 -> {
+                if (len < 40) return
+                // Yggdrasil overlay: 200::/7
+                // First byte of IPv6 address with mask 0xFE == 0x02, i.e. byte ∈ {0x02, 0x03}.
+                // IPv6 destination address is at bytes [24..39]
+                (buf[24].toInt() and 0xFE) == 0x02
+            }
+            else -> return
+        }
+
+        val packet = buf.copyOf(len)
+        if (isYgg) {
             ygg.writePacket(packet)
         } else {
             awg.writePacket(packet)
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Packet parsing helpers
-    // -------------------------------------------------------------------------
-
-    private fun ByteArray.destinationAddress(): InetAddress? {
-        if (isEmpty()) return null
-        return when ((this[0].toInt() and 0xF0) ushr 4) {
-            4    -> parseIPv4Dest()
-            6    -> parseIPv6Dest()
-            else -> null
-        }
-    }
-
-    /** IPv4: destination address at bytes [16..19] */
-    private fun ByteArray.parseIPv4Dest(): InetAddress? {
-        if (size < 20) return null
-        return try {
-            InetAddress.getByAddress(copyOfRange(16, 20))
-        } catch (e: UnknownHostException) { null }
-    }
-
-    /** IPv6: destination address at bytes [24..39] */
-    private fun ByteArray.parseIPv6Dest(): InetAddress? {
-        if (size < 40) return null
-        return try {
-            InetAddress.getByAddress(copyOfRange(24, 40))
-        } catch (e: UnknownHostException) { null }
-    }
-}
-
-/**
- * Yggdrasil overlay: 200::/7
- * First byte of IPv6 address with mask 0xFE == 0x02, i.e. byte ∈ {0x02, 0x03}.
- */
-fun InetAddress.isYggdrasil(): Boolean {
-    if (this !is Inet6Address) return false
-    return (address[0].toInt() and 0xFE) == 0x02
 }
