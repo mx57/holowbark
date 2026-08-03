@@ -66,29 +66,31 @@ class PacketRouter(
         }
     }
 
-    private fun dispatch(buf: ByteArray, len: Int) {
-        if (len <= 0) return
+    private fun dispatch(packet: ByteArray) {
+        if (packet.isEmpty()) return
+        val version = (packet[0].toInt() and 0xF0) ushr 4
 
-        val isYgg = when ((buf[0].toInt() and 0xF0) ushr 4) {
-            4 -> {
-                if (len < 20) return
-                false
-            }
-            6 -> {
-                if (len < 40) return
-                // Yggdrasil overlay: 200::/7
-                // First byte of IPv6 address with mask 0xFE == 0x02, i.e. byte ∈ {0x02, 0x03}.
-                // IPv6 destination address is at bytes [24..39]
-                (buf[24].toInt() and 0xFE) == 0x02
-            }
-            else -> return
-        }
-
-        val packet = buf.copyOf(len)
-        if (isYgg) {
-            ygg.writePacket(packet)
-        } else {
+        if (version == 4) {
+            if (packet.size < 20) return
             awg.writePacket(packet)
+        } else if (version == 6) {
+            if (packet.size < 40) return
+            if (packet.parseIPv6DestIsYggdrasil()) {
+                ygg.writePacket(packet)
+            } else {
+                awg.writePacket(packet)
+            }
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Packet parsing helpers
+    // -------------------------------------------------------------------------
+
+    private fun ByteArray.parseIPv6DestIsYggdrasil(): Boolean {
+        if (size < 40) return false
+        // The destination address starts at offset 24.
+        // Yggdrasil addresses are 200::/7, so the first byte (offset 24) must match (byte & 0xFE) == 0x02.
+        return (this[24].toInt() and 0xFE) == 0x02
     }
 }
