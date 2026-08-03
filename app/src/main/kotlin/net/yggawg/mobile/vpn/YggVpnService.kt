@@ -122,15 +122,20 @@ class YggVpnService : VpnService() {
         val awgServerPort      = awgConfig?.let { parseEndpointPort(it.endpoint) } ?: 44555
 
         val awgMgr = AwgManager(
-            onPacketOut    = { router?.writeToTun(it) },
-            onStatusChange = { state -> updateStatus { copy(awg = state) } },
+            onPacketOut       = { router?.writeToTun(it) },
+            onPacketOutBuffer = { pkt, len -> router?.writeToTunBuffer(pkt, len) },
+            onStatusChange    = { state -> updateStatus { copy(awg = state) } },
         )
         val yggMgr = YggdrasilManager(
-            onPacketOut = { router?.writeToTun(it) },
-            onWGPacket  = if (awgServerAddrBytes != null) { wgPkt ->
+            onPacketOut       = { router?.writeToTun(it) },
+            onPacketOutBuffer = { pkt, len -> router?.writeToTunBuffer(pkt, len) },
+            onWGPacket        = if (awgServerAddrBytes != null) { wgPkt ->
                 awgMgr.sendWGPacket(wgPkt)
             } else null,
-            onStatusChange = { state, addr, count ->
+            onWGPacketBuffer  = if (awgServerAddrBytes != null) { { wgPkt, len ->
+                awgMgr.sendWGPacketBuffer(wgPkt, len)
+            } } else null,
+            onStatusChange    = { state, addr, count ->
                 updateStatus { copy(ygg = state, yggAddress = addr, yggPeers = count) }
             },
         )
