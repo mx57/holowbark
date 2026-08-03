@@ -4,9 +4,6 @@ import kotlinx.coroutines.*
 import net.yggawg.mobile.AppLogger
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.Inet6Address
-import java.net.InetAddress
-import java.net.UnknownHostException
 
 /**
  * Userspace packet dispatcher sitting on the single TUN file descriptor.
@@ -65,7 +62,7 @@ class PacketRouter(
                 break
             }
             if (len <= 0) continue
-            dispatch(buf.copyOf(len))
+            dispatch(buf, len)
         }
     }
 
