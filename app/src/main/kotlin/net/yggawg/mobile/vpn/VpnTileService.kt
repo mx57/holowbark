@@ -125,14 +125,14 @@ class VpnTileService : TileService() {
         val intent = Intent(this, net.yggawg.mobile.MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val pi = PendingIntent.getActivity(
-                this, 0, intent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+        val pi = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(pi)
         } else {
-            @Suppress("DEPRECATION")
+            @Suppress("StartActivityAndCollapseDeprecated", "DEPRECATION")
             startActivityAndCollapse(intent)
         }
     }
