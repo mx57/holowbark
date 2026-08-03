@@ -122,15 +122,20 @@ class YggVpnService : VpnService() {
         val awgServerPort      = awgConfig?.let { parseEndpointPort(it.endpoint) } ?: 44555
 
         val awgMgr = AwgManager(
-            onPacketOut    = { router?.writeToTun(it) },
-            onStatusChange = { state -> updateStatus { copy(awg = state) } },
+            onPacketOut       = { router?.writeToTun(it) },
+            onPacketOutBuffer = { pkt, len -> router?.writeToTunBuffer(pkt, len) },
+            onStatusChange    = { state -> updateStatus { copy(awg = state) } },
         )
         val yggMgr = YggdrasilManager(
-            onPacketOut = { router?.writeToTun(it) },
-            onWGPacket  = if (awgServerAddrBytes != null) { wgPkt ->
+            onPacketOut       = { router?.writeToTun(it) },
+            onPacketOutBuffer = { pkt, len -> router?.writeToTunBuffer(pkt, len) },
+            onWGPacket        = if (awgServerAddrBytes != null) { wgPkt ->
                 awgMgr.sendWGPacket(wgPkt)
             } else null,
-            onStatusChange = { state, addr, count ->
+            onWGPacketBuffer  = if (awgServerAddrBytes != null) { { wgPkt, len ->
+                awgMgr.sendWGPacketBuffer(wgPkt, len)
+            } } else null,
+            onStatusChange    = { state, addr, count ->
                 updateStatus { copy(ygg = state, yggAddress = addr, yggPeers = count) }
             },
         )
@@ -178,7 +183,14 @@ class YggVpnService : VpnService() {
                 val slash = part.indexOf('/')
                 val ip     = if (slash >= 0) part.substring(0, slash).trim() else part
                 val defaultPrefix = if (":" in ip) 128 else 32
-                val prefix = if (slash >= 0) part.substring(slash + 1).trim().toIntOrNull() ?: defaultPrefix else defaultPrefix
+                var prefix = if (slash >= 0) part.substring(slash + 1).trim().toIntOrNull() ?: defaultPrefix else defaultPrefix
+
+                // Android VpnService Builder throws IllegalStateException if IPv6 prefix is not 128
+                if (":" in ip && prefix != 128) {
+                    AppLogger.w(TAG, "Forcing prefix to /128 for IPv6 address $ip (was /$prefix) to prevent establish() crash")
+                    prefix = 128
+                }
+
                 runCatching { builder.addAddress(ip, prefix) }
                     .onFailure { AppLogger.w(TAG, "addAddress $ip/$prefix: $it") }
                     .onSuccess { wgAddresses.add(ip) }

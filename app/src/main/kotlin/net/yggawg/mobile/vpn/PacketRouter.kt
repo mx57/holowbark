@@ -4,9 +4,6 @@ import kotlinx.coroutines.*
 import net.yggawg.mobile.AppLogger
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.Inet6Address
-import java.net.InetAddress
-import java.net.UnknownHostException
 
 /**
  * Userspace packet dispatcher sitting on the single TUN file descriptor.
@@ -50,6 +47,15 @@ class PacketRouter(
         }
     }
 
+    /** Write a packet back into the TUN (inbound from Yggdrasil or AWG). */
+    fun writeToTunBuffer(packet: ByteArray, len: Int) {
+        try {
+            outStream.write(packet, 0, len)
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "writeToTunBuffer: $e")
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Read loop
     // -------------------------------------------------------------------------
@@ -70,18 +76,18 @@ class PacketRouter(
     }
 
     private fun dispatch(packet: ByteArray, len: Int) {
-        if (len <= 0) return
+        if (len == 0) return
         val version = (packet[0].toInt() and 0xF0) ushr 4
 
         if (version == 4) {
             if (len < 20) return
-            awg.writePacket(packet.copyOf(len))
+            awg.writePacketBuffer(packet, len)
         } else if (version == 6) {
             if (len < 40) return
             if (packet.parseIPv6DestIsYggdrasil()) {
-                ygg.writePacket(packet.copyOf(len))
+                ygg.writePacketBuffer(packet, len)
             } else {
-                awg.writePacket(packet.copyOf(len))
+                awg.writePacketBuffer(packet, len)
             }
         }
     }
