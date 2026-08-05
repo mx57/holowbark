@@ -162,7 +162,7 @@ class AwgManager(
                         AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
                         onStatusChange(LayerState.UP)
                     }
-                    if (pkt.isNotEmpty()) {
+                    if (pkt.size > 0) {
                         onPacketOut(pkt)
                     }
                 }

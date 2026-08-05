@@ -12,3 +12,7 @@
 ## 2026-08-01 - Zero-copy buffers logic across JNI
 **Инсайт:** Передача `ByteArray` из Kotlin в Go (через gomobile) создает неявную копию памяти на границе JNI. В горячих циклах вроде `PacketRouter.readLoop()` использование `buf.copyOf()` создавало двойное копирование, повышая давление на сборщик мусора.
 **Действие:** Добавлена логика передачи буфера и длины `(packet: ByteArray, len: Int)` с Kotlin-стороны и реализация методов вроде `SendPacketBuffer(p []byte, length int)` на стороне Go, чтобы копирование происходило ровно один раз (из JNI в стек Go). Всегда следует избегать `copyOf` перед вызовом JNI функций.
+
+## 2026-08-05 - Compilation issue in Kotlin zero-copy
+**Инсайт:** Оптимизация JNI в Kotlin layer (zero-copy buffer routing) сломала сборку, так как на стороне Go (в `awgmobile.go`) отсутствовали необходимые методы буферизации (`SendPacketBuffer`, `RecvPacketBuffer`, `SendWGPacketBuffer`), и использование `pkt.isNotEmpty()` приводило к ошибкам компиляции из-за неоднозначности (overload resolution ambiguity) в Kotlin. Изменения Go-модулей в `go_libs` (например, Yggdrasil) теряются, так как директория игнорируется git — нужно редактировать исходники (например, `contrib/awgmobile/awgmobile.go`).
+**Действие:** Заменил `.isNotEmpty()` на `.size > 0` и добавил нужные zero-copy API-методы для JNI на стороне Go. Всегда следует проверять компиляцию всех слоев (и Go/AAR, и Kotlin) после внесения изменений в кросс-языковые интерфейсы и избегать редактирования игнорируемых директорий.
