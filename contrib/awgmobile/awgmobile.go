@@ -99,6 +99,23 @@ func (b *Backend) SendPacket(p []byte) error {
 	return nil
 }
 
+// SendPacketBuffer delivers a plaintext IP packet from a buffer into the AWG stack.
+func (b *Backend) SendPacketBuffer(p []byte, length int) error {
+	b.mu.Lock()
+	v := b.virt
+	b.mu.Unlock()
+	if v == nil {
+		return errors.New("not started")
+	}
+	cp := make([]byte, length)
+	copy(cp, p[:length])
+	select {
+	case v.inbound <- cp:
+	default: // drop if full
+	}
+	return nil
+}
+
 // RecvPacket returns the next decrypted IP packet from the AWG stack.
 // Blocks until a packet is available or the device is closed (returns nil).
 func (b *Backend) RecvPacket() []byte {
@@ -113,6 +130,22 @@ func (b *Backend) RecvPacket() []byte {
 		return nil
 	}
 	return p
+}
+
+// RecvPacketBuffer returns the next decrypted IP packet from the AWG stack into the provided buffer.
+func (b *Backend) RecvPacketBuffer(p []byte) int {
+	b.mu.Lock()
+	v := b.virt
+	b.mu.Unlock()
+	if v == nil {
+		return 0
+	}
+	pkt, ok := <-v.outbound
+	if !ok {
+		return 0
+	}
+	n := copy(p, pkt)
+	return n
 }
 
 // RecvWGPacket returns the next outbound WireGuard protocol packet (encrypted)
@@ -145,6 +178,23 @@ func (b *Backend) SendWGPacket(p []byte) {
 	}
 	cp := make([]byte, len(p))
 	copy(cp, p)
+	select {
+	case bind.toRecv <- cp:
+	case <-bind.done:
+	default: // drop if full
+	}
+}
+
+// SendWGPacketBuffer injects a WireGuard protocol packet from a buffer into the AWG device for decryption.
+func (b *Backend) SendWGPacketBuffer(p []byte, length int) {
+	b.mu.Lock()
+	bind := b.bind
+	b.mu.Unlock()
+	if bind == nil {
+		return
+	}
+	cp := make([]byte, length)
+	copy(cp, p[:length])
 	select {
 	case bind.toRecv <- cp:
 	case <-bind.done:
