@@ -80,6 +80,15 @@ class AwgManager(
         }
     }
 
+    /** Write a plaintext IP packet into the AWG stack for encryption and sending. */
+    fun writePacketBuffer(packet: ByteArray, len: Int) {
+        try {
+            backend?.sendPacketBuffer(packet, len.toLong())
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "sendPacketBuffer: $e")
+        }
+    }
+
     /**
      * Inject a WireGuard protocol packet (encrypted, from the server via Yggdrasil)
      * into the AWG device for decryption.
@@ -135,15 +144,8 @@ class AwgManager(
                     AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
                     onStatusChange(LayerState.UP)
                 }
-                if (pkt != null) {
-                    if (firstPacket) {
-                        firstPacket = false
-                        AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
-                        onStatusChange(LayerState.UP)
-                    }
-                    if (pkt.size > 0) {
-                        onPacketOut(pkt)
-                    }
+                if (pkt.size > 0) {
+                    onPacketOut(pkt)
                 }
             }
         }

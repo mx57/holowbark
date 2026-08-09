@@ -78,6 +78,14 @@ class YggdrasilManager(
         }
     }
 
+    fun writePacketBuffer(packet: ByteArray, len: Int) {
+        try {
+            ygg?.sendBuffer(packet, len.toLong())
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "sendBuffer: $e")
+        }
+    }
+
     fun getAddress(): String = runCatching { ygg?.addressString }.getOrNull() ?: ""
 
     // -------------------------------------------------------------------------

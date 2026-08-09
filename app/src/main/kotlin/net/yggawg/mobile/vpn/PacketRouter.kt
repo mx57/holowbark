@@ -72,15 +72,13 @@ class PacketRouter(
 
         if (version == 4) {
             if (len < 20) return
-            val exactlySizedPacket = packet.copyOfRange(0, len)
-            awg.writePacket(exactlySizedPacket)
+            awg.writePacketBuffer(packet, len)
         } else if (version == 6) {
             if (len < 40) return
-            val exactlySizedPacket = packet.copyOfRange(0, len)
-            if (exactlySizedPacket.parseIPv6DestIsYggdrasil()) {
-                ygg.writePacket(exactlySizedPacket)
+            if (packet.parseIPv6DestIsYggdrasil()) {
+                ygg.writePacketBuffer(packet, len)
             } else {
-                awg.writePacket(exactlySizedPacket)
+                awg.writePacketBuffer(packet, len)
             }
         }
     }
