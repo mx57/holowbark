@@ -105,6 +105,19 @@ class AwgManager(
         }
     }
 
+    /**
+     * Return the next outbound WireGuard protocol packet (encrypted) that AWG
+     * wants to send to the server into a buffer. Blocks until available or device is stopped.
+     */
+    fun recvWGPacketBuffer(buf: ByteArray): Int {
+        return try {
+            backend?.recvWGPacketBuffer(buf)?.toInt() ?: 0
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "recvWGPacketBuffer: $e")
+            0
+        }
+    }
+
     // -------------------------------------------------------------------------
 
     private fun readLoop(b: Backend, scope: CoroutineScope) {
@@ -122,8 +135,15 @@ class AwgManager(
                     AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
                     onStatusChange(LayerState.UP)
                 }
-                if (pkt.isNotEmpty()) {
-                    onPacketOut(pkt)
+                if (pkt != null) {
+                    if (firstPacket) {
+                        firstPacket = false
+                        AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
+                        onStatusChange(LayerState.UP)
+                    }
+                    if (pkt.size > 0) {
+                        onPacketOut(pkt)
+                    }
                 }
             }
         }

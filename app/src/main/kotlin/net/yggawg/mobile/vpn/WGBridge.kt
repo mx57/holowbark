@@ -29,26 +29,51 @@ fun buildIPv6UDP(
     payload: ByteArray,
 ): ByteArray {
     val udpLen = 8 + payload.size
-    val buf = ByteBuffer.allocate(40 + udpLen).order(ByteOrder.BIG_ENDIAN)
-    // IPv6 header (40 bytes)
-    buf.putInt(0x60000000)             // version=6, TC=0, flow=0
-    buf.putShort(udpLen.toShort())     // payload length
-    buf.put(0x11.toByte())             // next header = UDP
-    buf.put(64.toByte())               // hop limit
-    buf.put(srcAddr)
-    buf.put(dstAddr)
-    // UDP header (8 bytes) — checksum computed below
-    buf.putShort(srcPort.toShort())
-    buf.putShort(dstPort.toShort())
-    buf.putShort(udpLen.toShort())
-    buf.putShort(0)                    // checksum placeholder
-    buf.put(payload)
-    val bytes = buf.array()
-    // RFC 2460 §8.1: UDP over IPv6 checksum is mandatory (0 is illegal).
-    val cksum = udpv6Checksum(srcAddr, dstAddr, bytes, udpOffset = 40, udpLen = udpLen)
-    bytes[40 + 6] = (cksum ushr 8).toByte()
-    bytes[40 + 7] = (cksum and 0xFF).toByte()
+    val bytes = ByteArray(40 + udpLen)
+    buildIPv6UDPBuffer(srcAddr, dstAddr, srcPort, dstPort, payload, payload.size, bytes)
     return bytes
+}
+
+fun buildIPv6UDPBuffer(
+    srcAddr: ByteArray,
+    dstAddr: ByteArray,
+    srcPort: Int,
+    dstPort: Int,
+    payload: ByteArray,
+    payloadLen: Int,
+    outBuf: ByteArray,
+): Int {
+    val udpLen = 8 + payloadLen
+    // IPv6 header (40 bytes)
+    outBuf[0] = 0x60
+    outBuf[1] = 0
+    outBuf[2] = 0
+    outBuf[3] = 0
+    outBuf[4] = (udpLen ushr 8).toByte()
+    outBuf[5] = (udpLen and 0xFF).toByte()
+    outBuf[6] = 0x11 // next header = UDP
+    outBuf[7] = 64   // hop limit
+
+    System.arraycopy(srcAddr, 0, outBuf, 8, 16)
+    System.arraycopy(dstAddr, 0, outBuf, 24, 16)
+
+    // UDP header (8 bytes)
+    outBuf[40] = (srcPort ushr 8).toByte()
+    outBuf[41] = (srcPort and 0xFF).toByte()
+    outBuf[42] = (dstPort ushr 8).toByte()
+    outBuf[43] = (dstPort and 0xFF).toByte()
+    outBuf[44] = (udpLen ushr 8).toByte()
+    outBuf[45] = (udpLen and 0xFF).toByte()
+    outBuf[46] = 0
+    outBuf[47] = 0
+
+    System.arraycopy(payload, 0, outBuf, 48, payloadLen)
+
+    val cksum = udpv6Checksum(srcAddr, dstAddr, outBuf, udpOffset = 40, udpLen = udpLen)
+    outBuf[46] = (cksum ushr 8).toByte()
+    outBuf[47] = (cksum and 0xFF).toByte()
+
+    return 40 + udpLen
 }
 
 private fun udpv6Checksum(

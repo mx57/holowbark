@@ -376,11 +376,16 @@ class YggVpnService : VpnService() {
                 }
             }
             var wgPktCount = 0
+            val recvBuf = ByteArray(65536)
+            val sendBuf = ByteArray(65536)
+
             while (isActive) {
-                val wgPkt = awgMgr.recvWGPacket()
-                if (wgPkt == null) {
-                    AppLogger.w(TAG, "AWG bridge: recvWGPacket returned null — exiting bridge loop")
-                    break
+                val wgLen = awgMgr.recvWGPacketBuffer(recvBuf)
+                if (wgLen <= 0) {
+                    // Go channels blocking return 0 if closed/error
+                    if (wgLen == 0 && !isActive) break
+                    delay(50) // Fallback against tight loops if 0 returned spuriously
+                    continue
                 }
                 if (wgPktCount == 0) triggerJob.cancel()   // handshake initiated — stop sending triggers
                 wgPktCount++
@@ -390,14 +395,16 @@ class YggVpnService : VpnService() {
                     AppLogger.w(TAG, "AWG bridge: our Ygg address not available yet, skipping pkt #$wgPktCount")
                     continue
                 }
-                val ipPkt = buildIPv6UDP(
+                val ipPktLen = buildIPv6UDPBuffer(
                     srcAddr = ourAddrBytes,
                     dstAddr = serverAddrBytes,
                     srcPort = WG_LOCAL_PORT,
                     dstPort = serverPort,
-                    payload = wgPkt,
+                    payload = recvBuf,
+                    payloadLen = wgLen,
+                    outBuf = sendBuf,
                 )
-                yggMgr.writePacket(ipPkt)
+                yggMgr.writePacketBuffer(sendBuf, ipPktLen)
             }
             triggerJob.cancel()
             AppLogger.i(TAG, "AWG→Ygg bridge exited after $wgPktCount packet(s)")
