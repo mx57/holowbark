@@ -118,6 +118,24 @@ func (b *Backend) SendPacketBuffer(p []byte, length int) error {
 
 // RecvPacket returns the next decrypted IP packet from the AWG stack.
 // Blocks until a packet is available or the device is closed (returns nil).
+
+// SendPacketBuffer delivers a plaintext IP packet into the AWG stack for encryption.
+func (b *Backend) SendPacketBuffer(p []byte, length int) error {
+	b.mu.Lock()
+	v := b.virt
+	b.mu.Unlock()
+	if v == nil {
+		return errors.New("not started")
+	}
+	cp := make([]byte, length)
+	copy(cp, p[:length])
+	select {
+	case v.inbound <- cp:
+	default: // drop if full
+	}
+	return nil
+}
+
 func (b *Backend) RecvPacket() []byte {
 	b.mu.Lock()
 	v := b.virt
@@ -152,6 +170,24 @@ func (b *Backend) RecvPacketBuffer(p []byte) int {
 // that AWG wants to send to the server.
 // Kotlin should wrap this in an IPv6 UDP packet and send via Yggdrasil.
 // Blocks until a packet is available or the device is stopped (returns nil).
+
+// RecvPacketBuffer returns the next decrypted IP packet from the AWG stack,
+// copying it into the provided buffer and returning its length.
+func (b *Backend) RecvPacketBuffer(p []byte) int {
+	b.mu.Lock()
+	v := b.virt
+	b.mu.Unlock()
+	if v == nil {
+		return 0
+	}
+	pkt, ok := <-v.outbound
+	if !ok {
+		return 0
+	}
+	n := copy(p, pkt)
+	return n
+}
+
 func (b *Backend) RecvWGPacket() []byte {
 	b.mu.Lock()
 	bind := b.bind
