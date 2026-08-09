@@ -11,10 +11,8 @@ private const val TAG = "YggdrasilManager"
 
 class YggdrasilManager(
     private val onPacketOut: (ByteArray) -> Unit,
-    private val onPacketOutBuffer: ((ByteArray, Int) -> Unit)? = null,
     /** Called when Yggdrasil receives an inbound WG protocol packet from the server. */
     private val onWGPacket: ((ByteArray) -> Unit)? = null,
-    private val onWGPacketBuffer: ((ByteArray, Int) -> Unit)? = null,
     private val onStatusChange: (state: LayerState, address: String, peerCount: Int) -> Unit = { _, _, _ -> },
 ) {
     companion object {
@@ -80,14 +78,6 @@ class YggdrasilManager(
         }
     }
 
-    fun writePacketBuffer(packet: ByteArray, len: Int) {
-        try {
-            ygg?.sendBuffer(packet, len.toLong())
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "sendBuffer: $e")
-        }
-    }
-
     fun getAddress(): String = runCatching { ygg?.addressString }.getOrNull() ?: ""
 
     // -------------------------------------------------------------------------
@@ -135,88 +125,38 @@ class YggdrasilManager(
 
     private fun readLoop(inst: Yggdrasil) {
         AppLogger.d(TAG, "readLoop started")
-        val useBuffer = onPacketOutBuffer != null
-        val buf = if (useBuffer) ByteArray(65536) else null
         while (scope.isActive && ygg != null) {
             try {
-                if (useBuffer) {
-                    val len = inst.recvBuffer(buf).toInt()
-                    if (len <= 0) continue
+                val pkt = inst.recv() ?: continue
+                if (pkt.isEmpty()) continue
 
-                    // 1. WireGuard protocol packets → AWG
-                    val serverAddr = wgServerAddr
-                    if (serverAddr != null && onWGPacketBuffer != null) {
-                        val wgPayloadLen = buf!!.extractWGPayloadBuffer(serverAddr, len)
-                        if (wgPayloadLen > 0) {
-                            // UDP payload is 48 bytes into the packet.
-                            // To avoid allocation here, we can pass the whole buffer and tell AWG
-                            // to read `wgPayloadLen` bytes starting at offset 48.
-                            // Wait, awgMgr.sendWGPacketBuffer currently reads from index 0.
-                            // It's cleaner to just copy here to avoid modifying SendWGPacketBuffer again.
-                            // However, we added a SendWGPacketBuffer. We will copy here because AWG backend
-                            // needs `p[:length]` and we don't want to pass an offset to the Go layer.
-                            val wgPayload = buf.copyOfRange(48, 48 + wgPayloadLen)
-                            onWGPacketBuffer.invoke(wgPayload, wgPayloadLen)
-                            continue
-                        }
-                    } else if (serverAddr != null && onWGPacket != null) {
-                        val wgPayloadLen = buf!!.extractWGPayloadBuffer(serverAddr, len)
-                        if (wgPayloadLen > 0) {
-                            val wgPayload = buf.copyOfRange(48, 48 + wgPayloadLen)
-                            onWGPacket.invoke(wgPayload)
-                            continue
-                        }
+                // 1. WireGuard protocol packets → AWG
+                val serverAddr = wgServerAddr
+                if (serverAddr != null && onWGPacket != null) {
+                    val wgPayload = pkt.extractWGPayload(serverAddr)
+                    if (wgPayload != null) {
+                        onWGPacket.invoke(wgPayload)
+                        continue
                     }
-
-                    // 2. ICMPv6 Echo Reply → complete pending pings
-                    if (len >= 48
-                        && (buf!![0].toInt() and 0xF0) == 0x60   // IPv6
-                        && buf[6] == 0x3a.toByte()              // next header = ICMPv6
-                        && buf[40] == 0x81.toByte()             // type = Echo Reply (129)
-                    ) {
-                        val seq = ((buf[46].toInt() and 0xFF) shl 8) or (buf[47].toInt() and 0xFF)
-                        val entry = pendingPings.remove(seq)
-                        if (entry != null) {
-                            AppLogger.d(TAG, "pingYgg reply seq=$seq rtt=${System.currentTimeMillis() - entry.second}ms")
-                            entry.first.complete(Unit)
-                            continue   // don't forward ping replies to TUN
-                        }
-                    }
-
-                    // 3. Everything else → TUN
-                    onPacketOutBuffer!!.invoke(buf!!, len)
-                } else {
-                    val pkt = inst.recv() ?: continue
-                    if (pkt.isEmpty()) continue
-
-                    // 1. WireGuard protocol packets → AWG
-                    val serverAddr = wgServerAddr
-                    if (serverAddr != null && onWGPacket != null) {
-                        val wgPayload = pkt.extractWGPayload(serverAddr)
-                        if (wgPayload != null) {
-                            onWGPacket.invoke(wgPayload)
-                            continue
-                        }
-                    }
-
-                    // 2. ICMPv6 Echo Reply → complete pending pings
-                    if (pkt.size >= 48
-                        && (pkt[0].toInt() and 0xF0) == 0x60   // IPv6
-                        && pkt[6] == 0x3a.toByte()              // next header = ICMPv6
-                        && pkt[40] == 0x81.toByte()             // type = Echo Reply (129)
-                    ) {
-                        val seq = ((pkt[46].toInt() and 0xFF) shl 8) or (pkt[47].toInt() and 0xFF)
-                        val entry = pendingPings.remove(seq)
-                        if (entry != null) {
-                            AppLogger.d(TAG, "pingYgg reply seq=$seq rtt=${System.currentTimeMillis() - entry.second}ms")
-                            entry.first.complete(Unit)
-                            continue   // don't forward ping replies to TUN
-                        }
-                    }
-
-                    // 3. Everything else → TUN
-                    onPacketOut(pkt)
                 }
+
+                // 2. ICMPv6 Echo Reply → complete pending pings
+                if (pkt.size >= 48
+                    && (pkt[0].toInt() and 0xF0) == 0x60   // IPv6
+                    && pkt[6] == 0x3a.toByte()              // next header = ICMPv6
+                    && pkt[40] == 0x81.toByte()             // type = Echo Reply (129)
+                ) {
+                    val seq = ((pkt[46].toInt() and 0xFF) shl 8) or (pkt[47].toInt() and 0xFF)
+                    val entry = pendingPings.remove(seq)
+                    if (entry != null) {
+                        AppLogger.d(TAG, "pingYgg reply seq=$seq rtt=${System.currentTimeMillis() - entry.second}ms")
+                        entry.first.complete(Unit)
+                        continue   // don't forward ping replies to TUN
+                    }
+                }
+
+                // 3. Everything else → TUN
+                onPacketOut(pkt)
             } catch (e: Exception) {
                 if (scope.isActive) AppLogger.w(TAG, "recv: $e")
                 break
