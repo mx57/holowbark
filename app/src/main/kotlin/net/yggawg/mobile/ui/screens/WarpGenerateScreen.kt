@@ -9,6 +9,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,7 +53,7 @@ fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: 
                 title = { Text("WARP Generator") },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
             )
@@ -246,7 +248,7 @@ fun WarpGenerateScreen(onConfigGenerated: (configText: String) -> Unit, onDone: 
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Default.OpenInNew, null, Modifier.size(16.dp))
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Open in WireGuard App")
                 }
