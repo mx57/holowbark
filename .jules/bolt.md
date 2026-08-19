@@ -16,3 +16,6 @@
 ## 2026-08-05 - Compilation issue in Kotlin zero-copy
 **Инсайт:** Оптимизация JNI в Kotlin layer (zero-copy buffer routing) сломала сборку, так как на стороне Go (в `awgmobile.go`) отсутствовали необходимые методы буферизации (`SendPacketBuffer`, `RecvPacketBuffer`, `SendWGPacketBuffer`), и использование `pkt.isNotEmpty()` приводило к ошибкам компиляции из-за неоднозначности (overload resolution ambiguity) в Kotlin. Изменения Go-модулей в `go_libs` (например, Yggdrasil) теряются, так как директория игнорируется git — нужно редактировать исходники (например, `contrib/awgmobile/awgmobile.go`).
 **Действие:** Заменил `.isNotEmpty()` на `.size > 0` и добавил нужные zero-copy API-методы для JNI на стороне Go. Всегда следует проверять компиляцию всех слоев (и Go/AAR, и Kotlin) после внесения изменений в кросс-языковые интерфейсы и избегать редактирования игнорируемых директорий.
+## 2026-08-19 - Deprecated Compose Icons
+**Инсайт:** Иконки `Icons.Default.ArrowBack` и `Icons.Default.OpenInNew` устарели в Jetpack Compose и заменены на `Icons.AutoMirrored.Filled` для корректной поддержки RTL-языков.
+**Действие:** Всегда используйте `AutoMirrored` версии для иконок направления (стрелок, иконок возврата и перехода) и не забывайте добавлять соответствующий импорт `androidx.compose.material.icons.automirrored.filled.*`.
