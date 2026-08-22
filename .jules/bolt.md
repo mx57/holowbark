@@ -16,3 +16,7 @@
 ## 2026-08-05 - Compilation issue in Kotlin zero-copy
 **Инсайт:** Оптимизация JNI в Kotlin layer (zero-copy buffer routing) сломала сборку, так как на стороне Go (в `awgmobile.go`) отсутствовали необходимые методы буферизации (`SendPacketBuffer`, `RecvPacketBuffer`, `SendWGPacketBuffer`), и использование `pkt.isNotEmpty()` приводило к ошибкам компиляции из-за неоднозначности (overload resolution ambiguity) в Kotlin. Изменения Go-модулей в `go_libs` (например, Yggdrasil) теряются, так как директория игнорируется git — нужно редактировать исходники (например, `contrib/awgmobile/awgmobile.go`).
 **Действие:** Заменил `.isNotEmpty()` на `.size > 0` и добавил нужные zero-copy API-методы для JNI на стороне Go. Всегда следует проверять компиляцию всех слоев (и Go/AAR, и Kotlin) после внесения изменений в кросс-языковые интерфейсы и избегать редактирования игнорируемых директорий.
+
+## 2026-08-11 - Jetpack Compose AutoMirrored Icons RTL support
+**Инсайт:** При использовании Jetpack Compose иконки направления, такие как `Icons.Default.ArrowBack` и `Icons.Default.OpenInNew`, признаны устаревшими (deprecated), так как не поддерживают автоматическое отзеркаливание в RTL-локалях (Right-to-Left, например, арабский язык).
+**Действие:** Следует использовать `Icons.AutoMirrored.Filled.ArrowBack` (и аналогичные) и импортировать `androidx.compose.material.icons.automirrored.filled.*`. Это не только исправляет warning компилятора/линтера, но и улучшает accessibility (a11y) и UI/UX для пользователей, использующих RTL-языки.
