@@ -123,6 +123,25 @@ fun ByteArray.extractWGPayload(expectedSrcAddr: ByteArray): ByteArray? {
 }
 
 /**
+ * Checks if the packet contains a WG payload and returns its length and offset.
+ * Returns the payload length, or -1 if the packet is invalid.
+ */
+fun ByteArray.getWGPayloadLength(expectedSrcAddr: ByteArray): Int {
+    if (size < 48) return -1                          // need at least IPv6(40)+UDP(8)
+    if ((this[0].toInt() and 0xF0) != 0x60) return -1 // not IPv6
+    if (this[6] != 0x11.toByte()) return -1           // next header != UDP
+    // Source address is bytes 8–23
+    for (i in 0..15) {
+        if (this[8 + i] != expectedSrcAddr[i]) return -1
+    }
+    // UDP payload starts at byte 48 (40 IPv6 + 8 UDP header)
+    val udpLen = ((this[44].toInt() and 0xFF) shl 8) or (this[45].toInt() and 0xFF)
+    val payloadLen = udpLen - 8
+    if (payloadLen <= 0 || size < 48 + payloadLen) return -1
+    return payloadLen
+}
+
+/**
  * Parse the AWG server Yggdrasil address (IPv6) from an endpoint string like
  * "[200:4825:fd69:6d41:5475:a08a:8885:9542]:44555" → 16-byte array.
  * Returns null if the address is not an IPv6 address.

@@ -13,6 +13,7 @@ class YggdrasilManager(
     private val onPacketOut: (ByteArray) -> Unit,
     /** Called when Yggdrasil receives an inbound WG protocol packet from the server. */
     private val onWGPacket: ((ByteArray) -> Unit)? = null,
+    private val onWGPacketBuffer: ((ByteArray, Int, Int) -> Unit)? = null,
     private val onStatusChange: (state: LayerState, address: String, peerCount: Int) -> Unit = { _, _, _ -> },
 ) {
     companion object {
@@ -140,11 +141,19 @@ class YggdrasilManager(
 
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr
-                if (serverAddr != null && onWGPacket != null) {
-                    val wgPayload = pkt.extractWGPayload(serverAddr)
-                    if (wgPayload != null) {
-                        onWGPacket.invoke(wgPayload)
-                        continue
+                if (serverAddr != null && (onWGPacket != null || onWGPacketBuffer != null)) {
+                    val wgPayloadLen = pkt.getWGPayloadLength(serverAddr)
+                    if (wgPayloadLen > 0) {
+                        if (onWGPacketBuffer != null) {
+                            onWGPacketBuffer.invoke(pkt, 48, wgPayloadLen)
+                            continue
+                        } else if (onWGPacket != null) {
+                            val wgPayload = pkt.extractWGPayload(serverAddr)
+                            if (wgPayload != null) {
+                                onWGPacket.invoke(wgPayload)
+                                continue
+                            }
+                        }
                     }
                 }
 

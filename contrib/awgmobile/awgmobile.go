@@ -205,6 +205,27 @@ func (b *Backend) SendWGPacket(p []byte) {
 	}
 }
 
+// SendWGPacketBuffer injects a WireGuard protocol packet (encrypted) received from
+// the server via Yggdrasil into the AWG device for decryption without extra Kotlin copies.
+func (b *Backend) SendWGPacketBuffer(p []byte, offset int, length int) {
+	b.mu.Lock()
+	bind := b.bind
+	b.mu.Unlock()
+	if bind == nil {
+		return
+	}
+	if offset < 0 || length < 0 || offset+length > len(p) {
+		return
+	}
+	cp := make([]byte, length)
+	copy(cp, p[offset:offset+length])
+	select {
+	case bind.toRecv <- cp:
+	case <-bind.done:
+	default: // drop if full
+	}
+}
+
 // ─── channel-backed virtual TUN ──────────────────────────────────────────────
 
 type chanTUN struct {
