@@ -134,12 +134,13 @@ class AwgManager(
         val buf = ByteArray(65536)
         while (scope.isActive && backend != null) {
             val len = try {
-                b.recvPacketBuffer(buf)?.toInt() ?: 0
+                b.recvPacketBuffer(buf).toInt()
             } catch (e: Exception) {
                 if (scope.isActive) AppLogger.w(TAG, "recvPacketBuffer: $e")
                 0
             }
             if (len > 0) {
+                val pkt = buf.copyOfRange(0, len)
                 if (firstPacket) {
                     firstPacket = false
                     AppLogger.i(TAG, "WG handshake complete — tunnel UP ($len bytes)")

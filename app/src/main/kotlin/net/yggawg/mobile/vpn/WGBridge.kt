@@ -119,7 +119,9 @@ fun ByteArray.extractWGPayload(expectedSrcAddr: ByteArray): ByteArray? {
     val udpLen = ((this[44].toInt() and 0xFF) shl 8) or (this[45].toInt() and 0xFF)
     val payloadLen = udpLen - 8
     if (payloadLen <= 0 || size < 48 + payloadLen) return null
-    return copyOfRange(48, 48 + payloadLen)
+    val payload = ByteArray(payloadLen)
+    System.arraycopy(this, 48, payload, 0, payloadLen)
+    return payload
 }
 
 fun ByteArray.extractWGPayloadBuffer(len: Int, expectedSrcAddr: ByteArray): Int {

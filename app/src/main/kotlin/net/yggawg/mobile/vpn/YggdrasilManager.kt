@@ -138,6 +138,7 @@ class YggdrasilManager(
             try {
                 val len = inst.recvBuffer(buf).toInt()
                 if (len <= 0) continue
+                val pkt = buf.copyOfRange(0, len)
 
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr
