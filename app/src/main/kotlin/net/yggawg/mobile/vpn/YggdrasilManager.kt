@@ -133,10 +133,12 @@ class YggdrasilManager(
 
     private fun readLoop(inst: Yggdrasil) {
         AppLogger.d(TAG, "readLoop started")
+        val buf = ByteArray(65536)
         while (scope.isActive && ygg != null) {
             try {
-                val pkt = inst.recv() ?: continue
-                if (pkt.isEmpty()) continue
+                val len = inst.recvBuffer(buf).toInt()
+                if (len <= 0) continue
+                val pkt = buf.copyOfRange(0, len)
 
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr

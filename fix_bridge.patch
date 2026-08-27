@@ -1,0 +1,9 @@
+--- app/src/main/kotlin/net/yggawg/mobile/vpn/WGBridge.kt
++++ app/src/main/kotlin/net/yggawg/mobile/vpn/WGBridge.kt
+@@ -121,3 +121,5 @@
+     if (payloadLen <= 0 || size < 48 + payloadLen) return null
+-    return copyOfRange(48, 48 + payloadLen)
++    val payload = ByteArray(payloadLen)
++    System.arraycopy(this, 48, payload, 0, payloadLen)
++    return payload
+ }
