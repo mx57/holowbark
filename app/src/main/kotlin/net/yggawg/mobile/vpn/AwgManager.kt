@@ -143,12 +143,10 @@ class AwgManager(
                 val pkt = buf.copyOfRange(0, len)
                 if (firstPacket) {
                     firstPacket = false
-                    AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
+                    AppLogger.i(TAG, "WG handshake complete — tunnel UP ($len bytes)")
                     onStatusChange(LayerState.UP)
                 }
-                if (pkt.size > 0) {
-                    onPacketOut(pkt)
-                }
+                onPacketOut(buf.copyOfRange(0, len))
             }
         }
     }
