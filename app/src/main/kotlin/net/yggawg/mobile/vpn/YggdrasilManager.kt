@@ -13,6 +13,7 @@ class YggdrasilManager(
     private val onPacketOut: (ByteArray) -> Unit,
     /** Called when Yggdrasil receives an inbound WG protocol packet from the server. */
     private val onWGPacket: ((ByteArray) -> Unit)? = null,
+    private val onWGPacketBuffer: ((ByteArray, Int, Int) -> Unit)? = null,
     private val onStatusChange: (state: LayerState, address: String, peerCount: Int) -> Unit = { _, _, _ -> },
 ) {
     companion object {
@@ -133,28 +134,30 @@ class YggdrasilManager(
 
     private fun readLoop(inst: Yggdrasil) {
         AppLogger.d(TAG, "readLoop started")
+        val buf = ByteArray(65536)
         while (scope.isActive && ygg != null) {
             try {
-                val pkt = inst.recv() ?: continue
-                if (pkt.isEmpty()) continue
+                val len = inst.recvBuffer(buf).toInt()
+                if (len <= 0) continue
+                val pkt = buf.copyOfRange(0, len)
 
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr
                 if (serverAddr != null && onWGPacket != null) {
-                    val wgPayload = pkt.extractWGPayload(serverAddr)
-                    if (wgPayload != null) {
-                        onWGPacket.invoke(wgPayload)
+                    val wgPayloadLen = buf.extractWGPayloadBuffer(len, serverAddr)
+                    if (wgPayloadLen > 0) {
+                        onWGPacket.invoke(buf.copyOfRange(48, 48 + wgPayloadLen))
                         continue
                     }
                 }
 
                 // 2. ICMPv6 Echo Reply → complete pending pings
-                if (pkt.size >= 48
-                    && (pkt[0].toInt() and 0xF0) == 0x60   // IPv6
-                    && pkt[6] == 0x3a.toByte()              // next header = ICMPv6
-                    && pkt[40] == 0x81.toByte()             // type = Echo Reply (129)
+                if (len >= 48
+                    && (buf[0].toInt() and 0xF0) == 0x60   // IPv6
+                    && buf[6] == 0x3a.toByte()              // next header = ICMPv6
+                    && buf[40] == 0x81.toByte()             // type = Echo Reply (129)
                 ) {
-                    val seq = ((pkt[46].toInt() and 0xFF) shl 8) or (pkt[47].toInt() and 0xFF)
+                    val seq = ((buf[46].toInt() and 0xFF) shl 8) or (buf[47].toInt() and 0xFF)
                     val entry = pendingPings.remove(seq)
                     if (entry != null) {
                         AppLogger.d(TAG, "pingYgg reply seq=$seq rtt=${System.currentTimeMillis() - entry.second}ms")
@@ -164,9 +167,9 @@ class YggdrasilManager(
                 }
 
                 // 3. Everything else → TUN
-                onPacketOut(pkt)
+                onPacketOut(buf.copyOfRange(0, len))
             } catch (e: Exception) {
-                if (scope.isActive) AppLogger.w(TAG, "recv: $e")
+                if (scope.isActive) AppLogger.w(TAG, "recvBuffer: $e")
                 break
             }
         }

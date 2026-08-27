@@ -127,8 +127,9 @@ class YggVpnService : VpnService() {
         )
         val yggMgr = YggdrasilManager(
             onPacketOut       = { router?.writeToTun(it) },
-            onWGPacket        = if (awgServerAddrBytes != null) { wgPkt ->
-                awgMgr.sendWGPacket(wgPkt)
+            onWGPacket        = null,
+            onWGPacketBuffer  = if (awgServerAddrBytes != null) { wgPkt, offset, len ->
+                awgMgr.sendWGPacketBuffer(wgPkt, offset, len)
             } else null,
             onStatusChange    = { state, addr, count ->
                 updateStatus { copy(ygg = state, yggAddress = addr, yggPeers = count) }
