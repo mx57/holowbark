@@ -13,6 +13,7 @@ class YggdrasilManager(
     private val onPacketOut: (ByteArray) -> Unit,
     /** Called when Yggdrasil receives an inbound WG protocol packet from the server. */
     private val onWGPacket: ((ByteArray) -> Unit)? = null,
+    private val onWGPacketBuffer: ((ByteArray, Int, Int) -> Unit)? = null,
     private val onStatusChange: (state: LayerState, address: String, peerCount: Int) -> Unit = { _, _, _ -> },
 ) {
     companion object {
