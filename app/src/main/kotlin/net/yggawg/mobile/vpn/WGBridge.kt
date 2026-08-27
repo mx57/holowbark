@@ -119,7 +119,24 @@ fun ByteArray.extractWGPayload(expectedSrcAddr: ByteArray): ByteArray? {
     val udpLen = ((this[44].toInt() and 0xFF) shl 8) or (this[45].toInt() and 0xFF)
     val payloadLen = udpLen - 8
     if (payloadLen <= 0 || size < 48 + payloadLen) return null
-    return copyOfRange(48, 48 + payloadLen)
+    val payload = ByteArray(payloadLen)
+    System.arraycopy(this, 48, payload, 0, payloadLen)
+    return payload
+}
+
+fun ByteArray.extractWGPayloadBuffer(len: Int, expectedSrcAddr: ByteArray): Int {
+    if (len < 48) return 0                          // need at least IPv6(40)+UDP(8)
+    if ((this[0].toInt() and 0xF0) != 0x60) return 0 // not IPv6
+    if (this[6] != 0x11.toByte()) return 0           // next header != UDP
+    // Source address is bytes 8–23
+    for (i in 0..15) {
+        if (this[8 + i] != expectedSrcAddr[i]) return 0
+    }
+    // UDP payload starts at byte 48 (40 IPv6 + 8 UDP header)
+    val udpLen = ((this[44].toInt() and 0xFF) shl 8) or (this[45].toInt() and 0xFF)
+    val payloadLen = udpLen - 8
+    if (payloadLen <= 0 || len < 48 + payloadLen) return 0
+    return payloadLen
 }
 
 /**

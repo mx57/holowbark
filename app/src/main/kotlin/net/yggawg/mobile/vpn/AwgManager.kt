@@ -143,22 +143,22 @@ class AwgManager(
 
     private fun readLoop(b: Backend, scope: CoroutineScope) {
         var firstPacket = true
+        val buf = ByteArray(65536)
         while (scope.isActive && backend != null) {
-            val pkt = try {
-                b.recvPacket()
+            val len = try {
+                b.recvPacketBuffer(buf).toInt()
             } catch (e: Exception) {
-                if (scope.isActive) AppLogger.w(TAG, "recvPacket: $e")
-                null
+                if (scope.isActive) AppLogger.w(TAG, "recvPacketBuffer: $e")
+                0
             }
-            if (pkt != null) {
+            if (len > 0) {
+                val pkt = buf.copyOfRange(0, len)
                 if (firstPacket) {
                     firstPacket = false
-                    AppLogger.i(TAG, "WG handshake complete — tunnel UP (${pkt.size} bytes)")
+                    AppLogger.i(TAG, "WG handshake complete — tunnel UP ($len bytes)")
                     onStatusChange(LayerState.UP)
                 }
-                if (pkt.size > 0) {
-                    onPacketOut(pkt)
-                }
+                onPacketOut(buf.copyOfRange(0, len))
             }
         }
     }
