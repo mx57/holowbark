@@ -64,6 +64,36 @@ private fun normalizeEndpoint(raw: String): String {
 }
 
 /**
+ * Resolve hostname in endpoint to IP address if needed.
+ * amneziawg-go UAPI requires IP:port or [IPv6]:port (netip.ParseAddrPort).
+ */
+fun resolveEndpoint(endpoint: String): String {
+    val raw = endpoint.trim()
+    if (raw.isEmpty()) return raw
+    val hostPart = raw.substringAfter("://")
+    val lastColon = hostPart.lastIndexOf(':')
+    if (lastColon <= 0) return raw
+    val host = hostPart.substring(0, lastColon).removePrefix("[").removeSuffix("]")
+    val port = hostPart.substring(lastColon + 1)
+
+    // If host is already an IP address, return normal format without DNS lookup overhead
+    if (host.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$"""))) {
+        return "$host:$port"
+    }
+    if (host.contains(':')) {
+        return "[$host]:$port"
+    }
+
+    val resolvedAddr = runCatching {
+        val addrs = java.net.InetAddress.getAllByName(host)
+        addrs.firstOrNull { it is java.net.Inet4Address } ?: addrs.firstOrNull()
+    }.getOrNull() ?: return raw
+
+    val resolvedIp = resolvedAddr.hostAddress ?: return raw
+    return if (":" in resolvedIp) "[$resolvedIp]:$port" else "$resolvedIp:$port"
+}
+
+/**
  * Parse a WireGuard/AmneziaWG .conf file into [AwgConfig].
  * Handles multiple [Peer] sections; only the first peer is used.
  */

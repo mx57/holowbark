@@ -8,11 +8,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,7 @@ fun ImportScreen(
     onNavigateWarp: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var errorText by remember { mutableStateOf<String?>(null) }
     val awgConfig     by vm.awgConfig.collectAsState()
     val rawConf       by vm.rawConfText.collectAsState()
@@ -92,6 +95,33 @@ fun ImportScreen(
                 Icon(Icons.Default.FileOpen, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(if (awgConfig != null) "Replace .conf file" else "Open .conf file")
+            }
+
+            // Paste from clipboard button
+            OutlinedButton(
+                onClick = {
+                    val clipText = clipboardManager.getText()?.text
+                    if (clipText.isNullOrBlank()) {
+                        errorText = "Clipboard is empty"
+                        return@OutlinedButton
+                    }
+                    val config = try {
+                        parseAwgConf(clipText)
+                    } catch (e: AwgConfigParseException) {
+                        errorText = "Invalid .conf: ${e.message}"
+                        return@OutlinedButton
+                    } catch (e: Exception) {
+                        errorText = "Parse error: ${e.message}"
+                        return@OutlinedButton
+                    }
+                    vm.saveAwgConfig(config, clipText)
+                    onImported()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Paste from clipboard")
             }
 
             // Generate WARP button
