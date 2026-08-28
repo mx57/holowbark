@@ -27,7 +27,7 @@ import net.yggawg.mobile.config.AwgConfig
  *   ): String
  */
 class AwgManager(
-    private val onPacketOut: (ByteArray) -> Unit,
+    private val onPacketOut: (ByteArray, Int, Int) -> Unit,
     /** Called on IO thread when AWG layer state changes. */
     private val onStatusChange: (LayerState) -> Unit = {},
 ) {
@@ -153,13 +153,12 @@ class AwgManager(
                 0
             }
             if (len > 0) {
-                val pkt = buf.copyOfRange(0, len)
                 if (firstPacket) {
                     firstPacket = false
                     AppLogger.i(TAG, "WG handshake complete — tunnel UP ($len bytes)")
                     onStatusChange(LayerState.UP)
                 }
-                onPacketOut(buf.copyOfRange(0, len))
+                onPacketOut(buf, 0, len)
             }
         }
     }
