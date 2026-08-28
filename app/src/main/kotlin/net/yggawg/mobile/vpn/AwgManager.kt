@@ -44,7 +44,8 @@ class AwgManager(
         val protocolLabel = if (config.isAwg) "AmneziaWG" else "WireGuard"
         AppLogger.i(TAG, "Starting $protocolLabel → ${config.endpoint}")
 
-        val settings = buildUAPI(config)
+        val resolvedEndpoint = net.yggawg.mobile.config.resolveEndpoint(config.endpoint)
+        val settings = buildUAPI(config.copy(endpoint = resolvedEndpoint))
         AppLogger.d(TAG, "UAPI settings:\n${settings.replace(
             Regex("(?m)^(private_key|preshared_key)=.+$"), "$1=[REDACTED]")}")
 
