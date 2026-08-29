@@ -39,9 +39,9 @@ class PacketRouter(
     }
 
     /** Write a packet back into the TUN (inbound from Yggdrasil or AWG). */
-    fun writeToTun(packet: ByteArray) {
+    fun writeToTun(packet: ByteArray, offset: Int, length: Int) {
         try {
-            outStream.write(packet)
+            outStream.write(packet, offset, length)
         } catch (e: Exception) {
             AppLogger.w(TAG, "writeToTun: $e")
         }

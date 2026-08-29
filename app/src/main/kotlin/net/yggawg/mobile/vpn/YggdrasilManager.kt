@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 private const val TAG = "YggdrasilManager"
 
 class YggdrasilManager(
-    private val onPacketOut: (ByteArray) -> Unit,
+    private val onPacketOut: (ByteArray, Int, Int) -> Unit,
     /** Called when Yggdrasil receives an inbound WG protocol packet from the server. */
     private val onWGPacket: ((ByteArray) -> Unit)? = null,
     private val onWGPacketBuffer: ((ByteArray, Int, Int) -> Unit)? = null,
@@ -139,14 +139,14 @@ class YggdrasilManager(
             try {
                 val len = inst.recvBuffer(buf).toInt()
                 if (len <= 0) continue
-                val pkt = buf.copyOfRange(0, len)
 
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr
-                if (serverAddr != null && onWGPacket != null) {
+                if (serverAddr != null && (onWGPacket != null || onWGPacketBuffer != null)) {
                     val wgPayloadLen = buf.extractWGPayloadBuffer(len, serverAddr)
                     if (wgPayloadLen > 0) {
-                        onWGPacket.invoke(buf.copyOfRange(48, 48 + wgPayloadLen))
+                        onWGPacketBuffer?.invoke(buf, 48, wgPayloadLen)
+                        onWGPacket?.invoke(buf.copyOfRange(48, 48 + wgPayloadLen))
                         continue
                     }
                 }
@@ -167,7 +167,7 @@ class YggdrasilManager(
                 }
 
                 // 3. Everything else → TUN
-                onPacketOut(buf.copyOfRange(0, len))
+                onPacketOut(buf, 0, len)
             } catch (e: Exception) {
                 if (scope.isActive) AppLogger.w(TAG, "recvBuffer: $e")
                 break
