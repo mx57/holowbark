@@ -140,12 +140,13 @@ class YggdrasilManager(
                 val len = inst.recvBuffer(buf).toInt()
                 if (len <= 0) continue
 
+
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr
                 if (serverAddr != null && onWGPacketBuffer != null) {
                     val wgPayloadLen = buf.extractWGPayloadBuffer(len, serverAddr)
                     if (wgPayloadLen > 0) {
-                        onWGPacketBuffer.invoke(buf, 48, wgPayloadLen)
+                        onWGPacketBuffer?.invoke(buf, 48, wgPayloadLen)
                         continue
                     }
                 }
