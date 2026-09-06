@@ -377,11 +377,10 @@ class YggVpnService : VpnService() {
                 }
             }
             var wgPktCount = 0
-            val recvBuf = ByteArray(65536)
             val sendBuf = ByteArray(65536)
 
             while (isActive) {
-                val wgLen = awgMgr.recvWGPacketBuffer(recvBuf)
+                val wgLen = awgMgr.recvWGPacketBufferWithOffset(sendBuf, 48)
                 if (wgLen <= 0) {
                     // Go channels blocking return 0 if closed/error
                     if (wgLen == 0 && !isActive) break
@@ -396,12 +395,11 @@ class YggVpnService : VpnService() {
                     AppLogger.w(TAG, "AWG bridge: our Ygg address not available yet, skipping pkt #$wgPktCount")
                     continue
                 }
-                val ipPktLen = buildIPv6UDPBuffer(
+                val ipPktLen = buildIPv6UDPBufferInPlace(
                     srcAddr = ourAddrBytes,
                     dstAddr = serverAddrBytes,
                     srcPort = WG_LOCAL_PORT,
                     dstPort = serverPort,
-                    payload = recvBuf,
                     payloadLen = wgLen,
                     outBuf = sendBuf,
                 )
