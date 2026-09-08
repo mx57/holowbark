@@ -378,6 +378,7 @@ class YggVpnService : VpnService() {
             }
             var wgPktCount = 0
             val sendBuf = ByteArray(65536)
+            var cachedOurAddrBytes: ByteArray? = null
 
             while (isActive) {
                 val wgLen = awgMgr.recvWGPacketBufferWithOffset(sendBuf, 48)
@@ -389,8 +390,13 @@ class YggVpnService : VpnService() {
                 }
                 if (wgPktCount == 0) triggerJob.cancel()   // handshake initiated — stop sending triggers
                 wgPktCount++
-                val ourAddrStr   = yggMgr.getAddress()
-                val ourAddrBytes = parseYggSelfAddr(ourAddrStr)
+
+                if (cachedOurAddrBytes == null) {
+                    val ourAddrStr = yggMgr.getAddress()
+                    cachedOurAddrBytes = parseYggSelfAddr(ourAddrStr)
+                }
+                val ourAddrBytes = cachedOurAddrBytes
+
                 if (ourAddrBytes == null) {
                     AppLogger.w(TAG, "AWG bridge: our Ygg address not available yet, skipping pkt #$wgPktCount")
                     continue
