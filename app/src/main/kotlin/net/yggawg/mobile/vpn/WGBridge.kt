@@ -276,3 +276,43 @@ fun buildDummyIPv4(): ByteArray {
     buf.putShort(1)                  // sequence
     return buf.array()
 }
+fun buildIPv6UDPBufferInPlace(
+    srcAddr: ByteArray,
+    dstAddr: ByteArray,
+    srcPort: Int,
+    dstPort: Int,
+    payloadLen: Int,
+    outBuf: ByteArray,
+): Int {
+    val udpLen = 8 + payloadLen
+    // IPv6 header (40 bytes)
+    outBuf[0] = 0x60
+    outBuf[1] = 0
+    outBuf[2] = 0
+    outBuf[3] = 0
+    outBuf[4] = (udpLen ushr 8).toByte()
+    outBuf[5] = (udpLen and 0xFF).toByte()
+    outBuf[6] = 0x11 // next header = UDP
+    outBuf[7] = 64   // hop limit
+
+    System.arraycopy(srcAddr, 0, outBuf, 8, 16)
+    System.arraycopy(dstAddr, 0, outBuf, 24, 16)
+
+    // UDP header (8 bytes)
+    outBuf[40] = (srcPort ushr 8).toByte()
+    outBuf[41] = (srcPort and 0xFF).toByte()
+    outBuf[42] = (dstPort ushr 8).toByte()
+    outBuf[43] = (dstPort and 0xFF).toByte()
+    outBuf[44] = (udpLen ushr 8).toByte()
+    outBuf[45] = (udpLen and 0xFF).toByte()
+    outBuf[46] = 0
+    outBuf[47] = 0
+
+    // No need to arraycopy payload, it's already in outBuf starting from offset 48
+
+    val cksum = udpv6Checksum(srcAddr, dstAddr, outBuf, udpOffset = 40, udpLen = udpLen)
+    outBuf[46] = (cksum ushr 8).toByte()
+    outBuf[47] = (cksum and 0xFF).toByte()
+
+    return 40 + udpLen
+}
