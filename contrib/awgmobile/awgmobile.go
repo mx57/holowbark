@@ -186,6 +186,21 @@ func (b *Backend) RecvWGPacketBuffer(p []byte) int {
 	return n
 }
 
+func (b *Backend) RecvWGPacketBufferOffset(p []byte, offset int) int {
+	b.mu.Lock()
+	bind := b.bind
+	b.mu.Unlock()
+	if bind == nil {
+		return 0
+	}
+	pkt, ok := <-bind.toSend
+	if !ok {
+		return 0
+	}
+	if offset < 0 || offset > len(p) { return 0 }
+	return copy(p[offset:], pkt)
+}
+
 // SendWGPacket injects a WireGuard protocol packet (encrypted) received from
 // the server via Yggdrasil into the AWG device for decryption.
 // Kotlin should call this with the UDP payload from the server's Yggdrasil packets.

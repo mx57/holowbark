@@ -122,11 +122,11 @@ class YggVpnService : VpnService() {
         val awgServerPort      = awgConfig?.let { parseEndpointPort(it.endpoint) } ?: 44555
 
         val awgMgr = AwgManager(
-            onPacketOut       = { pkt, offset, len -> router?.writeToTunBuffer(pkt, offset, len) },
+            onPacketOut       = { pkt, offset, len -> router?.writeToTun(pkt, offset, len) },
             onStatusChange    = { state -> updateStatus { copy(awg = state) } },
         )
         val yggMgr = YggdrasilManager(
-            onPacketOut       = { pkt, offset, len -> router?.writeToTunBuffer(pkt, offset, len) },
+            onPacketOut       = { pkt, offset, len -> router?.writeToTun(pkt, offset, len) },
             onWGPacket        = null,
             onWGPacketBuffer  = if (awgServerAddrBytes != null) { wgPkt, offset, len ->
                 awgMgr.sendWGPacketBuffer(wgPkt, offset, len)
@@ -377,12 +377,11 @@ class YggVpnService : VpnService() {
                 }
             }
             var wgPktCount = 0
-            val recvBuf = ByteArray(65536)
             val sendBuf = ByteArray(65536)
             var cachedOurAddrBytes: ByteArray? = null
 
             while (isActive) {
-                val wgLen = awgMgr.recvWGPacketBuffer(recvBuf)
+                val wgLen = awgMgr.recvWGPacketBufferWithOffset(sendBuf, 48)
                 if (wgLen <= 0) {
                     // Go channels blocking return 0 if closed/error
                     if (wgLen == 0 && !isActive) break
@@ -401,12 +400,11 @@ class YggVpnService : VpnService() {
                     AppLogger.w(TAG, "AWG bridge: our Ygg address not available yet, skipping pkt #$wgPktCount")
                     continue
                 }
-                val ipPktLen = buildIPv6UDPBuffer(
+                val ipPktLen = buildIPv6UDPBufferInPlace(
                     srcAddr = ourAddrBytes,
                     dstAddr = serverAddrBytes,
                     srcPort = WG_LOCAL_PORT,
                     dstPort = serverPort,
-                    payload = recvBuf,
                     payloadLen = wgLen,
                     outBuf = sendBuf,
                 )

@@ -140,6 +140,19 @@ class AwgManager(
         }
     }
 
+    /**
+     * Return the next outbound WireGuard protocol packet (encrypted) that AWG
+     * wants to send to the server into a buffer starting at offset. Blocks until available or device is stopped.
+     */
+    fun recvWGPacketBufferWithOffset(buf: ByteArray, offset: Int): Int {
+        return try {
+            backend?.recvWGPacketBufferOffset(buf, offset.toLong())?.toInt() ?: 0
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "recvWGPacketBufferWithOffset: $e")
+            0
+        }
+    }
+
     // -------------------------------------------------------------------------
 
     private fun readLoop(b: Backend, scope: CoroutineScope) {
