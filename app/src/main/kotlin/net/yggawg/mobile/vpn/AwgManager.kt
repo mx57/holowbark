@@ -165,7 +165,10 @@ class AwgManager(
                 if (scope.isActive) AppLogger.w(TAG, "recvPacketBuffer: $e")
                 0
             }
-            if (len > 0) {
+            if (len <= 0) {
+                // Return 0 means the device channel is closed or stopped.
+                break
+            } else {
                 if (firstPacket) {
                     firstPacket = false
                     AppLogger.i(TAG, "WG handshake complete — tunnel UP ($len bytes)")
