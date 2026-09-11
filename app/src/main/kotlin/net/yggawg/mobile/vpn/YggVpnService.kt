@@ -396,7 +396,6 @@ class YggVpnService : VpnService() {
                     cachedOurAddrBytes = parseYggSelfAddr(ourAddrStr)
                 }
                 val ourAddrBytes = cachedOurAddrBytes
-
                 if (ourAddrBytes == null) {
                     AppLogger.w(TAG, "AWG bridge: our Ygg address not available yet, skipping pkt #$wgPktCount")
                     continue
