@@ -383,10 +383,8 @@ class YggVpnService : VpnService() {
             while (isActive) {
                 val wgLen = awgMgr.recvWGPacketBufferWithOffset(sendBuf, 48)
                 if (wgLen <= 0) {
-                    // Go channels blocking return 0 if closed/error
-                    if (wgLen == 0 && !isActive) break
-                    delay(50) // Fallback against tight loops if 0 returned spuriously
-                    continue
+                    // Return <= 0 means the device channel is closed or stopped.
+                    break
                 }
                 if (wgPktCount == 0) triggerJob.cancel()   // handshake initiated — stop sending triggers
                 wgPktCount++
