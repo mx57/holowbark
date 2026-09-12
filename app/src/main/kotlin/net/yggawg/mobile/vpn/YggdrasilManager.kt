@@ -138,8 +138,10 @@ class YggdrasilManager(
         while (scope.isActive && ygg != null) {
             try {
                 val len = inst.recvBuffer(buf).toInt()
-                if (len <= 0) continue
-
+                if (len <= 0) {
+                    // Return 0 means the device channel is closed or stopped.
+                    break
+                }
 
                 // 1. WireGuard protocol packets → AWG
                 val serverAddr = wgServerAddr

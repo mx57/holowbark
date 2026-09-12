@@ -140,6 +140,7 @@ clone-deps:
 	fi
 	@echo "==> Adding Go dependencies …"
 	cd $(YGG_DIR) && \
+	  go get -tool golang.org/x/mobile/cmd/gobind && \
 	  go get golang.org/x/mobile/bind && \
 	  go get github.com/amnezia-vpn/amneziawg-go@latest && \
 	  go mod tidy
