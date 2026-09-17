@@ -61,7 +61,8 @@ class PacketRouter(
                 if (scope.isActive) AppLogger.w(TAG, "TUN read error: $e")
                 break
             }
-            if (len <= 0) continue
+            if (len < 0) break
+            if (len == 0) continue
             dispatch(buf, len)
         }
     }
