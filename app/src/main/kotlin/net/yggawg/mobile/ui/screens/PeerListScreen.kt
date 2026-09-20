@@ -26,6 +26,7 @@ fun PeerListScreen(
 ) {
     val peers         by vm.currentCountryPeers.collectAsState()
     val selectedPeers by vm.selectedPeers.collectAsState()
+    val isLoading     by vm.isLoadingPeers.collectAsState()
 
     LaunchedEffect(countryKey) {
         vm.loadPeersForCountry(countryKey)
@@ -75,9 +76,13 @@ fun PeerListScreen(
             }
         }
     ) { padding ->
-        if (peers.isEmpty()) {
+        if (peers.isEmpty() && isLoading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+        } else if (peers.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("No peers found for this country", color = MaterialTheme.colorScheme.outline)
             }
         } else {
             LazyColumn(contentPadding = padding) {
