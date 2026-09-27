@@ -163,7 +163,12 @@ class VpnStateViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadPeersForCountry(countryKey: String) {
         viewModelScope.launch {
-            _currentCountryPeers.value = repo.getPeersForCountry(countryKey)
+            _isLoadingPeers.value = true
+            try {
+                _currentCountryPeers.value = repo.getPeersForCountry(countryKey)
+            } finally {
+                _isLoadingPeers.value = false
+            }
         }
     }
 
