@@ -30,3 +30,7 @@
 ## 2026-09-08 - CPU starvation in JNI read loops
 **Инсайт:** Циклы чтения VPN (такие как `AwgManager.readLoop` и `YggdrasilManager.readLoop`) бесконечно крутились (100% CPU starvation) при возврате `0` байт из JNI, если канал закрывался при остановке туннеля. Использование `delay(50)` в таких циклах вносит критические сетевые задержки и джиттер.
 **Действие:** Если блокирующий метод чтения (например, `recvPacketBuffer` в Go) возвращает `len <= 0`, это означает закрытие канала (EOF) или остановку устройства. В этом случае нужно немедленно прерывать цикл (`break`), а не усыплять поток через `delay(50)`.
+
+## 2026-09-08 - Gomobile bind output directory error
+**Инсайт:** gomobile bind fails with 'no such file or directory' if the output directory does not exist.
+**Действие:** Run mkdir -p app/libs before make aar.
