@@ -48,6 +48,7 @@ aar: $(AAR_OUT)
 
 $(AAR_OUT): $(YGG_DIR)/go.mod $(AWG_WRAPPER_DIR)/awgmobile.go
 	@echo "==> Building holowbark.aar …"
+	@mkdir -p $(CURDIR)/app/libs
 	cd $(YGG_DIR) && \
 	  PATH=$(HOME)/go/bin:$$PATH \
 	  $(GOMOBILE) bind \
